@@ -189,10 +189,10 @@ Goal: Send board JSON + user question to AI and accept structured outputs.
 
 Checklist:
 
-- [ ] Define a structured output schema (response text + optional board update).
-- [ ] Include board JSON and in-memory conversation history in prompt.
-- [ ] Validate structured output and apply updates if present.
-- [ ] Add tests for schema validation and update application.
+- [x] Define a structured output schema (response text + optional board update).
+- [x] Include board JSON and in-memory conversation history in prompt.
+- [x] Validate structured output and apply updates if present.
+- [x] Add tests for schema validation and update application.
 
 Tests:
 

@@ -5,9 +5,14 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from app.ai import call_openrouter
+from app.ai import (
+    build_ai_messages,
+    call_openrouter,
+    call_openrouter_messages,
+    parse_ai_response,
+)
 from app.db import get_board_state, init_db, update_board_state
-from app.schemas import BoardUpdateRequest
+from app.schemas import AIChatRequest, BoardUpdateRequest
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -18,7 +23,14 @@ DEFAULT_DB_PATH = DATA_DIR / "app.db"
 def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
     app = FastAPI()
 
+    app.state.ai_history = []
+
     init_db(db_path)
+
+    def _dump_model(model):
+        if hasattr(model, "model_dump"):
+            return model.model_dump()
+        return model.dict()
 
     @app.get("/api/health")
     def health() -> JSONResponse:
@@ -35,7 +47,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
     @app.put("/api/board")
     def put_board(payload: BoardUpdateRequest) -> JSONResponse:
-        board = update_board_state(db_path, payload.board)
+        board = update_board_state(db_path, _dump_model(payload.board))
         return JSONResponse({"board": board})
 
     @app.get("/api/ai/test")
@@ -47,6 +59,32 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail="AI request failed") from exc
         return JSONResponse({"response": response})
+
+    @app.post("/api/ai/chat")
+    def ai_chat(payload: AIChatRequest) -> JSONResponse:
+        history = app.state.ai_history
+        board_payload = _dump_model(payload.board)
+        messages = build_ai_messages(board_payload, history, payload.message)
+
+        try:
+            raw_content = call_openrouter_messages(messages)
+            ai_response = parse_ai_response(raw_content)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="AI request failed") from exc
+        except (ValueError, TypeError, KeyError) as exc:
+            raise HTTPException(status_code=502, detail="AI response invalid") from exc
+
+        history.append({"role": "user", "content": payload.message})
+        history.append({"role": "assistant", "content": ai_response.response})
+
+        response_board = None
+        if ai_response.board is not None:
+            response_board = _dump_model(ai_response.board)
+            update_board_state(db_path, response_board)
+
+        return JSONResponse({"response": ai_response.response, "board": response_board})
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 

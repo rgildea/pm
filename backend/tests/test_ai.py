@@ -1,8 +1,11 @@
+import json
 import os
 
 import httpx
+from fastapi.testclient import TestClient
 
 from app.ai import call_openrouter
+from app.main import create_app
 
 
 class DummyResponse:
@@ -38,3 +41,50 @@ def test_call_openrouter_returns_message(monkeypatch) -> None:
 
     result = call_openrouter("2+2")
     assert result == "4"
+
+
+def test_ai_chat_applies_board_update(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    updated_board = {
+        "columns": [{"id": "col-a", "title": "A", "cardIds": []}],
+        "cards": {},
+    }
+    response_payload = json.dumps({"response": "Updated", "board": updated_board})
+
+    def fake_post(*_, **__) -> DummyResponse:
+        return DummyResponse({"choices": [{"message": {"content": response_payload}}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+
+    board = client.get("/api/board").json()["board"]
+    response = client.post("/api/ai/chat", json={"message": "Update", "board": board})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response"] == "Updated"
+    assert payload["board"] == updated_board
+
+    reread = client.get("/api/board")
+    assert reread.status_code == 200
+    assert reread.json()["board"] == updated_board
+
+
+def test_ai_chat_rejects_invalid_response(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def fake_post(*_, **__) -> DummyResponse:
+        return DummyResponse({"choices": [{"message": {"content": "not json"}}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+
+    board = client.get("/api/board").json()["board"]
+    response = client.post("/api/ai/chat", json={"message": "Update", "board": board})
+    assert response.status_code == 502

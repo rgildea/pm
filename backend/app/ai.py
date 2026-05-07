@@ -1,12 +1,23 @@
+import json
 import os
+from typing import Any
 
 import httpx
+
+from app.schemas import AIChatResponse
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_NAME = "openai/gpt-oss-120b-free"
 
+AI_CHAT_SYSTEM_PROMPT = (
+    "You are a project management assistant. "
+    "Return JSON only. The JSON must include a 'response' string and may include "
+    "a 'board' object. If no board changes are needed, omit 'board' or set it to null. "
+    "Never include extra keys."
+)
 
-def call_openrouter(prompt: str) -> str:
+
+def _openrouter_headers() -> dict[str, str]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
@@ -24,12 +35,59 @@ def call_openrouter(prompt: str) -> str:
     if title:
         headers["X-Title"] = title
 
+    return headers
+
+
+def call_openrouter(prompt: str) -> str:
     payload = {
         "model": MODEL_NAME,
         "messages": [{"role": "user", "content": prompt}],
     }
 
-    response = httpx.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
+    response = httpx.post(
+        OPENROUTER_URL, headers=_openrouter_headers(), json=payload, timeout=30
+    )
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"]
+
+
+def call_openrouter_messages(messages: list[dict[str, str]]) -> str:
+    payload = {
+        "model": MODEL_NAME,
+        "messages": messages,
+    }
+
+    response = httpx.post(
+        OPENROUTER_URL, headers=_openrouter_headers(), json=payload, timeout=30
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["choices"][0]["message"]["content"]
+
+
+def build_ai_messages(
+    board: dict[str, Any], history: list[dict[str, str]], user_message: str
+) -> list[dict[str, str]]:
+    board_json = json.dumps(board, ensure_ascii=True)
+    messages = [
+        {"role": "system", "content": AI_CHAT_SYSTEM_PROMPT},
+        *history,
+        {
+            "role": "user",
+            "content": (
+                "Current board JSON:\n"
+                f"{board_json}\n\n"
+                "User request:\n"
+                f"{user_message}"
+            ),
+        },
+    ]
+    return messages
+
+
+def parse_ai_response(content: str) -> AIChatResponse:
+    payload = json.loads(content)
+    if hasattr(AIChatResponse, "model_validate"):
+        return AIChatResponse.model_validate(payload)
+    return AIChatResponse.parse_obj(payload)
