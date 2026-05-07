@@ -1,21 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCorners,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { KanbanColumn } from "@/components/KanbanColumn";
 import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import {
+    closestCorners,
+    DndContext,
+    DragOverlay,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+    type DragStartEvent,
+} from "@dnd-kit/core";
+import { useMemo, useState } from "react";
 
-export const KanbanBoard = () => {
+type KanbanBoardProps = {
+  onLogout: () => void;
+  userName: string;
+};
+
+export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
 
@@ -111,13 +116,25 @@ export const KanbanBoard = () => {
                 and capture quick notes without getting buried in settings.
               </p>
             </div>
-            <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
-                Focus
-              </p>
-              <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
-                One board. Five columns. Zero clutter.
-              </p>
+            <div className="flex flex-col items-end gap-3">
+              <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
+                  Focus
+                </p>
+                <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
+                  One board. Five columns. Zero clutter.
+                </p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                  Signed in as {userName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+              >
+                Log out
+              </button>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4">

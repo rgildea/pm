@@ -49,6 +49,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+test-results/
 
 # Translations
 *.mo
@@ -174,3 +175,4 @@ cython_debug/
 
 .DS_Store
 
+.vscode/settings.json
