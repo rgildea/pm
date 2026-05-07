@@ -7,7 +7,7 @@ import httpx
 from app.schemas import AIChatResponse
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL_NAME = "openai/gpt-oss-120b-free"
+MODEL_NAME = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
 
 AI_CHAT_SYSTEM_PROMPT = (
     "You are a project management assistant. "
@@ -86,8 +86,32 @@ def build_ai_messages(
     return messages
 
 
+def _strip_code_fences(content: str) -> str:
+    trimmed = content.strip()
+    if trimmed.startswith("```") and trimmed.endswith("```"):
+        trimmed = trimmed.strip("`")
+        if trimmed.startswith("json"):
+            trimmed = trimmed[4:]
+    return trimmed.strip()
+
+
+def _extract_json(content: str) -> str:
+    stripped = _strip_code_fences(content)
+    try:
+        json.loads(stripped)
+        return stripped
+    except json.JSONDecodeError:
+        pass
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("AI response did not include JSON")
+    return stripped[start : end + 1]
+
+
 def parse_ai_response(content: str) -> AIChatResponse:
-    payload = json.loads(content)
+    payload = json.loads(_extract_json(content))
     if hasattr(AIChatResponse, "model_validate"):
         return AIChatResponse.model_validate(payload)
     return AIChatResponse.parse_obj(payload)

@@ -1,17 +1,18 @@
 "use client";
 
+import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 import {
-    closestCorners,
-    DndContext,
-    DragOverlay,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    type DragEndEvent,
-    type DragStartEvent,
+  closestCorners,
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { useEffect, useMemo, useState } from "react";
 
@@ -29,7 +30,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
-    })
+    }),
   );
 
   const boardData = board ?? initialData;
@@ -93,6 +94,11 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
     });
   };
 
+  const handleAiBoardUpdate = (nextBoard: BoardData) => {
+    setBoard(nextBoard);
+    setError(null);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
   };
@@ -107,7 +113,11 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
 
     updateBoard((current) => ({
       ...current,
-      columns: moveCard(current.columns, active.id as string, over.id as string),
+      columns: moveCard(
+        current.columns,
+        active.id as string,
+        over.id as string,
+      ),
     }));
   };
 
@@ -115,7 +125,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
     updateBoard((current) => ({
       ...current,
       columns: current.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
+        column.id === columnId ? { ...column, title } : column,
       ),
     }));
   };
@@ -131,7 +141,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
       columns: current.columns.map((column) =>
         column.id === columnId
           ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
+          : column,
       ),
     }));
   };
@@ -140,7 +150,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
     updateBoard((current) => ({
       ...current,
       cards: Object.fromEntries(
-        Object.entries(current.cards).filter(([id]) => id !== cardId)
+        Object.entries(current.cards).filter(([id]) => id !== cardId),
       ),
       columns: current.columns.map((column) =>
         column.id === columnId
@@ -148,7 +158,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
               ...column,
               cardIds: column.cardIds.filter((id) => id !== cardId),
             }
-          : column
+          : column,
       ),
     }));
   };
@@ -181,8 +191,9 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
                 Kanban Studio
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--gray-text)]">
-                Keep momentum visible. Rename columns, drag cards between stages,
-                and capture quick notes without getting buried in settings.
+                Keep momentum visible. Rename columns, drag cards between
+                stages, and capture quick notes without getting buried in
+                settings.
               </p>
             </div>
             <div className="flex flex-col items-end gap-3">
@@ -224,32 +235,41 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
           ) : null}
         </header>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <section className="grid gap-6 lg:grid-cols-5">
-            {boardData.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds.map((cardId) => boardData.cards[cardId])}
-                onRename={handleRenameColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-              />
-            ))}
-          </section>
-          <DragOverlay>
-            {activeCard ? (
-              <div className="w-[260px]">
-                <KanbanCardPreview card={activeCard} />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <section className="grid gap-6 lg:grid-cols-5">
+              {boardData.columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds.map(
+                    (cardId) => boardData.cards[cardId],
+                  )}
+                  onRename={handleRenameColumn}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                />
+              ))}
+            </section>
+            <DragOverlay>
+              {activeCard ? (
+                <div className="w-[260px]">
+                  <KanbanCardPreview card={activeCard} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+          <ChatSidebar
+            board={boardData}
+            disabled={isLoading}
+            onBoardUpdate={handleAiBoardUpdate}
+          />
+        </div>
       </main>
     </div>
   );

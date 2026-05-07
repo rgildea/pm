@@ -177,6 +177,7 @@ Tests:
 
 - Backend test that stubs AI call (unit).
 - Manual or integration check for real API call if key present.
+- Load .env from project root for tests and app startup.
 
 Success criteria:
 

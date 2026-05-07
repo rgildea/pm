@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,12 +16,14 @@ from app.db import get_board_state, init_db, update_board_state
 from app.schemas import AIChatRequest, BoardUpdateRequest
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = BASE_DIR.parent
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "app.db"
 
 
 def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
+    load_dotenv(ROOT_DIR / ".env", override=False)
     app = FastAPI()
 
     app.state.ai_history = []
