@@ -1,9 +1,11 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 
+from app.ai import call_openrouter
 from app.db import get_board_state, init_db, update_board_state
 from app.schemas import BoardUpdateRequest
 
@@ -35,6 +37,16 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
     def put_board(payload: BoardUpdateRequest) -> JSONResponse:
         board = update_board_state(db_path, payload.board)
         return JSONResponse({"board": board})
+
+    @app.get("/api/ai/test")
+    def ai_test() -> JSONResponse:
+        try:
+            response = call_openrouter("2+2")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="AI request failed") from exc
+        return JSONResponse({"response": response})
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 

@@ -168,9 +168,9 @@ Goal: Enable backend to call OpenRouter with a simple test prompt.
 
 Checklist:
 
-- [ ] Add OpenRouter client configuration using OPENROUTER_API_KEY.
-- [ ] Implement a backend endpoint that performs a simple AI call.
-- [ ] Verify response with a "2+2" prompt.
+- [x] Add OpenRouter client configuration using OPENROUTER_API_KEY.
+- [x] Implement a backend endpoint that performs a simple AI call.
+- [x] Verify response with a "2+2" prompt.
 
 Tests:
 
