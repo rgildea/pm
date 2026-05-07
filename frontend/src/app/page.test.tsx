@@ -1,6 +1,45 @@
 import Home from "@/app/page";
+import { initialData } from "@/lib/kanban";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mockFetch = () => {
+  const fetchMock = vi.fn().mockImplementation((_, init) => {
+    const method = init?.method ?? "GET";
+    if (method === "GET") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ board: initialData }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    }
+
+    if (method === "PUT") {
+      const body = init?.body ? JSON.parse(init.body.toString()) : {};
+      return Promise.resolve(
+        new Response(JSON.stringify({ board: body.board ?? initialData }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    }
+
+    return Promise.resolve(new Response("Not found", { status: 404 }));
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
+
+beforeEach(() => {
+  mockFetch();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("Home login", () => {
   it("shows the login form by default", () => {

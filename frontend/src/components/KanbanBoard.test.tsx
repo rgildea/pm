@@ -1,17 +1,57 @@
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { initialData } from "@/lib/kanban";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, vi } from "vitest";
 
 const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
 
+const mockFetch = () => {
+  const fetchMock = vi.fn().mockImplementation((_, init) => {
+    const method = init?.method ?? "GET";
+    if (method === "GET") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ board: initialData }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    }
+
+    if (method === "PUT") {
+      const body = init?.body ? JSON.parse(init.body.toString()) : {};
+      return Promise.resolve(
+        new Response(JSON.stringify({ board: body.board ?? initialData }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    }
+
+    return Promise.resolve(new Response("Not found", { status: 404 }));
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
+
+beforeEach(() => {
+  mockFetch();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("KanbanBoard", () => {
-  it("renders five columns", () => {
+  it("renders five columns", async () => {
     render(<KanbanBoard onLogout={() => {}} userName="user" />);
-    expect(screen.getAllByTestId(/column-/i)).toHaveLength(5);
+    expect(await screen.findAllByTestId(/column-/i)).toHaveLength(5);
   });
 
   it("renames a column", async () => {
     render(<KanbanBoard onLogout={() => {}} userName="user" />);
+    await screen.findAllByTestId(/column-/i);
     const column = getFirstColumn();
     const input = within(column).getByLabelText("Column title");
     await userEvent.clear(input);
@@ -21,6 +61,7 @@ describe("KanbanBoard", () => {
 
   it("adds and removes a card", async () => {
     render(<KanbanBoard onLogout={() => {}} userName="user" />);
+    await screen.findAllByTestId(/column-/i);
     const column = getFirstColumn();
     const addButton = within(column).getByRole("button", {
       name: /add a card/i,

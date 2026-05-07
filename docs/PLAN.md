@@ -146,10 +146,10 @@ Goal: Use backend API for board data instead of local state.
 
 Checklist:
 
-- [ ] Replace frontend initial data with API fetch.
-- [ ] Persist board edits (renames, add/delete, moves) through the API.
-- [ ] Handle loading and error states cleanly.
-- [ ] Add integration/E2E tests for persistent behavior.
+- [x] Replace frontend initial data with API fetch.
+- [x] Persist board edits (renames, add/delete, moves) through the API.
+- [x] Handle loading and error states cleanly.
+- [x] Add integration/E2E tests for persistent behavior.
 
 Tests:
 
