@@ -1,0 +1,34 @@
+{
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        { "name": "id", "type": "text", "primary_key": true },
+        {
+          "name": "username",
+          "type": "text",
+          "unique": true,
+          "not_null": true
+        },
+        { "name": "created_at", "type": "text", "not_null": true }
+      ]
+    },
+    {
+      "name": "boards",
+      "columns": [
+        { "name": "id", "type": "text", "primary_key": true },
+        {
+          "name": "user_id",
+          "type": "text",
+          "not_null": true,
+          "references": "users.id"
+        },
+        { "name": "title", "type": "text", "not_null": true },
+        { "name": "state_json", "type": "text", "not_null": true },
+        { "name": "updated_at", "type": "text", "not_null": true },
+        { "name": "created_at", "type": "text", "not_null": true }
+      ],
+      "indexes": [{ "name": "idx_boards_user_id", "columns": ["user_id"] }]
+    }
+  ]
+}

@@ -14,9 +14,9 @@ Goal: Finalize the execution plan and document the existing frontend.
 
 Checklist:
 
-- [ ] Expand this document with detailed steps, tests, and success criteria for each part.
-- [ ] Create a concise frontend agent guide in frontend/AGENTS.md that explains code layout and key files.
-- [ ] Review plan with the user and get approval before proceeding to Part 2.
+- [x] Expand this document with detailed steps, tests, and success criteria for each part.
+- [x] Create a concise frontend agent guide in frontend/AGENTS.md that explains code layout and key files.
+- [x] Review plan with the user and get approval before proceeding to Part 2.
 
 Tests:
 
@@ -34,11 +34,11 @@ Goal: Create Docker setup, FastAPI backend skeleton, and start/stop scripts with
 
 Checklist:
 
-- [ ] Add Dockerfile and docker-compose or equivalent single-container setup.
-- [ ] Scaffold backend/ FastAPI app with health route and sample API route.
-- [ ] Serve a minimal static HTML page at / from the backend to validate wiring.
-- [ ] Add scripts to start/stop on macOS, Linux, and Windows.
-- [ ] Document how to run the container locally in docs/.
+- [x] Add Dockerfile and docker-compose or equivalent single-container setup.
+- [x] Scaffold backend/ FastAPI app with health route and sample API route.
+- [x] Serve a minimal static HTML page at / from the backend to validate wiring.
+- [x] Add scripts to start/stop on macOS, Linux, and Windows.
+- [x] Document how to run the container locally in docs/.
 
 Tests:
 
@@ -58,10 +58,10 @@ Goal: Build the existing frontend as static assets and serve it from FastAPI at 
 
 Checklist:
 
-- [ ] Configure NextJS static export build output for the container.
-- [ ] Update backend static file serving to deliver the built frontend.
-- [ ] Verify that the demo Kanban board renders at /.
-- [ ] Wire unit/integration test commands for frontend in the container workflow.
+- [x] Configure NextJS static export build output for the container.
+- [x] Update backend static file serving to deliver the built frontend.
+- [x] Verify that the demo Kanban board renders at /.
+- [x] Wire unit/integration test commands for frontend in the container workflow.
 
 Tests:
 
@@ -80,11 +80,11 @@ Goal: Require dummy credentials to access the board and allow logout.
 
 Checklist:
 
-- [ ] Add a login screen at / when not authenticated.
-- [ ] Validate credentials against "user" / "password".
-- [ ] Store auth state in memory/session (no persistence required).
-- [ ] Add logout control and clear session state.
-- [ ] Ensure guard redirects from board to login when not authenticated.
+- [x] Add a login screen at / when not authenticated.
+- [x] Validate credentials against "user" / "password".
+- [x] Store auth state in memory/session (no persistence required).
+- [x] Add logout control and clear session state.
+- [x] Ensure guard redirects from board to login when not authenticated.
 
 Tests:
 
@@ -103,10 +103,10 @@ Goal: Propose and document a simple SQLite schema for the board state.
 
 Checklist:
 
-- [ ] Draft schema JSON in docs/ (tables, fields, relationships).
-- [ ] Choose storage approach (normalized tables vs JSON blob).
-- [ ] Document tradeoffs and MVP rationale.
-- [ ] Get user approval before implementing.
+- [x] Draft schema JSON in docs/ (tables, fields, relationships).
+- [x] Choose storage approach (normalized tables vs JSON blob).
+- [x] Document tradeoffs and MVP rationale.
+- [x] Get user approval before implementing.
 
 Tests:
 
