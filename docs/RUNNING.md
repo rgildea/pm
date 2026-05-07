@@ -32,6 +32,13 @@ Or run directly:
 docker compose down
 ```
 
+## Tests
+
+Backend:
+
+- macOS/Linux: scripts/test-backend.sh
+- Windows (PowerShell): scripts/test-backend.ps1
+
 ## Verify
 
 ```bash

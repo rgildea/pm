@@ -128,6 +128,7 @@ Checklist:
 - [x] Implement board-state write endpoint for a user.
 - [x] Ensure database auto-creates on first run.
 - [x] Add backend unit tests for persistence and API behavior.
+- [x] Add backend test scripts for consistent local runs.
 
 Tests:
 
