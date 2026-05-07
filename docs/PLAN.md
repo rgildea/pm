@@ -212,10 +212,10 @@ Goal: Add a sidebar chat UI that uses the AI endpoint and updates the board.
 
 Checklist:
 
-- [ ] Add sidebar layout and chat UI components.
-- [ ] Wire chat to backend AI endpoint.
-- [ ] On AI board updates, refresh the board UI automatically.
-- [ ] Add frontend tests for chat flow.
+- [x] Add sidebar layout and chat UI components.
+- [x] Wire chat to backend AI endpoint.
+- [x] On AI board updates, refresh the board UI automatically.
+- [x] Add frontend tests for chat flow.
 
 Tests:
 
