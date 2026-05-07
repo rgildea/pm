@@ -123,11 +123,11 @@ Goal: Add board read/write API with SQLite storage and backend tests.
 
 Checklist:
 
-- [ ] Implement database initialization and migration-free startup.
-- [ ] Implement board-state read endpoint for a user.
-- [ ] Implement board-state write endpoint for a user.
-- [ ] Ensure database auto-creates on first run.
-- [ ] Add backend unit tests for persistence and API behavior.
+- [x] Implement database initialization and migration-free startup.
+- [x] Implement board-state read endpoint for a user.
+- [x] Implement board-state write endpoint for a user.
+- [x] Ensure database auto-creates on first run.
+- [x] Add backend unit tests for persistence and API behavior.
 
 Tests:
 
