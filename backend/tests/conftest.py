@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -8,7 +9,7 @@ def _default_db_path() -> Path:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_default_db() -> None:
+def cleanup_default_db() -> Iterator[None]:
     db_path = _default_db_path()
     if db_path.exists():
         db_path.unlink()
