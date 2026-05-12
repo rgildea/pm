@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,8 +23,16 @@ DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "app.db"
 
 
-def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
+def _default_db_path() -> Path:
+    configured_path = os.getenv("PM_DB_PATH")
+    if configured_path:
+        return Path(configured_path)
+    return DEFAULT_DB_PATH
+
+
+def create_app(db_path: Path | None = None) -> FastAPI:
     load_dotenv(ROOT_DIR / ".env", override=False)
+    db_path = db_path or _default_db_path()
     app = FastAPI()
 
     app.state.ai_history = []
