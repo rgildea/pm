@@ -37,12 +37,12 @@ def realistic_board() -> dict[str, Any]:
             "card-1": {
                 "id": "card-1",
                 "title": "Write tests",
-                "description": "Cover board persistence",
+                "details": "Cover board persistence",
             },
             "card-2": {
                 "id": "card-2",
                 "title": "Review API",
-                "description": "Check request validation",
+                "details": "Check request validation",
             },
         },
     }

@@ -37,7 +37,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### Tests
 
-- **`conftest.py:realistic_board` uses `"description"` not `"details"`**: The test fixture at `backend/tests/conftest.py:41,45` uses `"description"` as the card field key, but real board data (both frontend `initialData` and backend `board_defaults.py`) uses `"details"`. This means the test data shape does not match production. While this does not cause test failures (Pydantic's `Any` accepts any key), it reduces test fidelity. This also means `test_board_api.py` and `test_ai.py` are testing against data that doesn't look like real data.
+- **`conftest.py:realistic_board` uses `"description"` not `"details"`**: The test fixture at `backend/tests/conftest.py:41,45` used `"description"` as the card field key, but real board data uses `"details"`.
+- **[FIXED]** Changed `"description"` to `"details"` in the fixture.
 
 - **Good coverage overall**: DB init and read/write are tested. API round-trips are tested. AI call is tested with stubs and a real API check (gated behind `OPENROUTER_API_KEY`). Error paths (invalid AI response, missing API key) are covered.
 
@@ -136,7 +137,7 @@ volumes:
 ### High priority
 
 1. ~~Move side effects out of React state updater in `KanbanBoard.tsx:89-95`.~~ **[FIXED]**
-2. Fix `description` vs `details` mismatch in test fixtures.
+2. ~~Fix `description` vs `details` mismatch in test fixtures.~~ **[FIXED]**
 3. ~~Pin dependency versions in `requirements.txt`.~~ **[FIXED]** Switched to `pyproject.toml` + `uv.lock` with `uv sync --frozen`.
 4. Add a volume mount for the SQLite database in `docker-compose.yml`.
 5. Fix the hardcoded path in `scripts/test-backend.sh`.
