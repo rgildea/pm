@@ -47,26 +47,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### KanbanBoard.tsx
 
-- **Side effect inside state updater (critical)**: Lines 89-95 call `void persistBoard(nextBoard)` inside the `setBoard` updater function. In React 18+ strict mode (or concurrent features), updater functions may be called multiple times, leading to duplicate API calls. The side effect should be moved to a `useEffect` or called after the state update completes.
-
-```tsx
-// Problematic pattern:
-const updateBoard = (updater) => {
-  setBoard((prev) => {
-    const nextBoard = updater(prev ?? initialData);
-    void persistBoard(nextBoard);  // side effect inside updater
-    return nextBoard;
-  });
-};
-
-// Preferred:
-const updateBoard = (updater) => {
-  setBoard((prev) => updater(prev ?? initialData));
-};
-useEffect(() => {
-  if (board) void persistBoard(board);
-}, [board]);
-```
+- **Side effect inside state updater (critical)**: Lines 89-95 called `void persistBoard(nextBoard)` inside the `setBoard` updater function. In React 18+ strict mode, updater functions may be called multiple times, leading to duplicate API calls.
+- **[FIXED]** Moved the side effect out of the updater. The next board state is computed first, then both `setBoard` and `persistBoard` are called with that value. Since `updateBoard` is only called from synchronous event handlers (drag, click, blur), the closure value of `board` is never stale — React processes event handlers one at a time on the main thread.
 
 - **No loading state distinction**: `isLoading` is `true` only on initial load. Subsequent `persistBoard` calls have no loading indicator — the UI updates immediately optimistically. The error banner is the only feedback for a failed save. Consider adding a saving indicator.
 
@@ -153,7 +135,7 @@ volumes:
 
 ### High priority
 
-1. Move side effects out of React state updater in `KanbanBoard.tsx:89-95`.
+1. ~~Move side effects out of React state updater in `KanbanBoard.tsx:89-95`.~~ **[FIXED]**
 2. Fix `description` vs `details` mismatch in test fixtures.
 3. ~~Pin dependency versions in `requirements.txt`.~~ **[FIXED]** Switched to `pyproject.toml` + `uv.lock` with `uv sync --frozen`.
 4. Add a volume mount for the SQLite database in `docker-compose.yml`.

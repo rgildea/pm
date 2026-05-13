@@ -87,11 +87,9 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   };
 
   const updateBoard = (updater: (current: BoardData) => BoardData) => {
-    setBoard((prev) => {
-      const nextBoard = updater(prev ?? initialData);
-      void persistBoard(nextBoard);
-      return nextBoard;
-    });
+    const nextBoard = updater(board ?? initialData);
+    setBoard(nextBoard);
+    void persistBoard(nextBoard);
   };
 
   const handleAiBoardUpdate = (nextBoard: BoardData) => {
