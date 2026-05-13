@@ -57,7 +57,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### ChatSidebar.tsx
 
-- **Fixed scroll container height**: Line 104 uses `max-h-[380px]` which does not respond to viewport height. On small screens, the message list may overflow or be cut off. Use a relative or viewport-relative unit.
+- **Fixed scroll container height**: Line 104 used `max-h-[380px]` which did not respond to viewport height. On small screens, messages could be cut off.
+- **[FIXED]** Replaced with `min-h-0 flex-1` so the message area fills available space naturally.
 
 - **Welcome message ID format**: Line 7 uses `"msg-welcome"` while `createId` generates IDs like `"msg-a1b2c3d4e5"`. The welcome message is not deletable by ID, so this doesn't cause bugs, but it's inconsistent.
 
@@ -143,7 +144,7 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 ### Medium priority
 
 6. ~~Add `KeyboardSensor` for accessible drag-and-drop.~~ **[FIXED]**
-7. Make `ChatSidebar` scroll area height responsive.
+7. ~~Make `ChatSidebar` scroll area height responsive.~~ **[FIXED]**
 8. Replace generic dict types in `schemas.py` with specific Pydantic models.
 9. Deduplicate `call_openrouter` and `call_openrouter_messages`.
 

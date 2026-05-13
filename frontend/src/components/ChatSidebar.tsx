@@ -101,7 +101,7 @@ export const ChatSidebar = ({
         </p>
       </div>
 
-      <div className="flex max-h-[380px] flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
         {messages.map((message) => (
           <div
             key={message.id}
