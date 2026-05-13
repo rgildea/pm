@@ -112,6 +112,4 @@ def _extract_json(content: str) -> str:
 
 def parse_ai_response(content: str) -> AIChatResponse:
     payload = json.loads(_extract_json(content))
-    if hasattr(AIChatResponse, "model_validate"):
-        return AIChatResponse.model_validate(payload)
-    return AIChatResponse.parse_obj(payload)
+    return AIChatResponse.model_validate(payload)

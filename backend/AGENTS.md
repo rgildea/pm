@@ -27,6 +27,12 @@ optional (defaults to `openai/gpt-oss-120b:free`).
 - GET /api/ai/test: Simple OpenRouter test prompt.
 - POST /api/ai/chat: Chat endpoint returning assistant response and optional board updates.
 
+## Known limitations
+
+- `app.state.ai_history` is global to the process, not per-user. All requests share
+  one conversation history. This is fine for the single-user MVP but must be changed
+  if multi-user support is added.
+
 ## Tests
 
 - scripts/test-backend.sh (macOS/Linux) and scripts/test-backend.ps1 (Windows).

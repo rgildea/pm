@@ -39,18 +39,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     init_db(db_path)
 
-    def _dump_model(model):
-        if hasattr(model, "model_dump"):
-            return model.model_dump()
-        return model.dict()
-
     @app.get("/api/health")
     def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
-
-    @app.get("/api/hello")
-    def hello() -> JSONResponse:
-        return JSONResponse({"message": "Hello from FastAPI"})
 
     @app.get("/api/board")
     def get_board() -> JSONResponse:
@@ -59,7 +50,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.put("/api/board")
     def put_board(payload: BoardUpdateRequest) -> JSONResponse:
-        board = update_board_state(db_path, _dump_model(payload.board))
+        board = update_board_state(db_path, payload.board.model_dump())
         return JSONResponse({"board": board})
 
     @app.get("/api/ai/test")
@@ -75,7 +66,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     @app.post("/api/ai/chat")
     def ai_chat(payload: AIChatRequest) -> JSONResponse:
         history = app.state.ai_history
-        board_payload = _dump_model(payload.board)
+        board_payload = payload.board.model_dump()
         messages = build_ai_messages(board_payload, history, payload.message)
 
         try:
@@ -93,7 +84,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
         response_board = None
         if ai_response.board is not None:
-            response_board = _dump_model(ai_response.board)
+            response_board = ai_response.board.model_dump()
             update_board_state(db_path, response_board)
 
         return JSONResponse({"response": ai_response.response, "board": response_board})

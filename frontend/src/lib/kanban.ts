@@ -15,6 +15,7 @@ export type BoardData = {
   cards: Record<string, Card>;
 };
 
+// Mirrors DEFAULT_BOARD_STATE in backend/app/board_defaults.py. If you change one, update the other.
 export const initialData: BoardData = {
   columns: [
     { id: "col-backlog", title: "Backlog", cardIds: ["card-1", "card-2"] },

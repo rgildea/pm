@@ -1,3 +1,4 @@
+# Mirrors the initialData in frontend/src/lib/kanban.ts. If you change one, update the other.
 DEFAULT_BOARD_TITLE = "Kanban Board"
 
 DEFAULT_BOARD_STATE = {
