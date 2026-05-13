@@ -19,7 +19,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### app/ai.py
 
-- **Duplicate HTTP logic**: As noted above, `call_openrouter` and `call_openrouter_messages` share the same HTTP POST logic, timeout, error handling, and response parsing. Extract the shared body into a private helper.
+- **Duplicate HTTP logic**: `call_openrouter` and `call_openrouter_messages` shared identical HTTP POST logic, timeout, error handling, and response parsing.
+- **[FIXED]** `call_openrouter` now delegates to `call_openrouter_messages`, eliminating the duplication.
 
 - **System prompt may lead to invalid JSON**: The system prompt instructs the model to "Return JSON only" with specific keys. But the `_strip_code_fences` and `_extract_json` fallback logic suggests the model sometimes wraps JSON in markdown code fences. This defensive parsing works, but the prompt could be strengthened to reduce fence-wrapped responses.
 
@@ -147,7 +148,7 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 6. ~~Add `KeyboardSensor` for accessible drag-and-drop.~~ **[FIXED]**
 7. ~~Make `ChatSidebar` scroll area height responsive.~~ **[FIXED]**
 8. ~~Replace generic dict types in `schemas.py` with specific Pydantic models.~~ **[FIXED]**
-9. Deduplicate `call_openrouter` and `call_openrouter_messages`.
+9. ~~Deduplicate `call_openrouter` and `call_openrouter_messages`.~~ **[FIXED]**
 
 ### Low priority
 

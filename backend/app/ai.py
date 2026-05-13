@@ -39,17 +39,7 @@ def _openrouter_headers() -> dict[str, str]:
 
 
 def call_openrouter(prompt: str) -> str:
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-
-    response = httpx.post(
-        OPENROUTER_URL, headers=_openrouter_headers(), json=payload, timeout=30
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+    return call_openrouter_messages([{"role": "user", "content": prompt}])
 
 
 def call_openrouter_messages(messages: list[dict[str, str]]) -> str:
