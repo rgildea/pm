@@ -22,6 +22,7 @@ RUN uv sync --frozen --no-dev
 ENV PATH="/app/backend/.venv/bin:$PATH"
 
 COPY backend /app/backend
+COPY frontend/default-board.json /app/frontend/default-board.json
 COPY --from=frontend-build /app/frontend/out /app/backend/static
 
 EXPOSE 8000
