@@ -1,181 +1,173 @@
-# Code review
+# Code Review
 
-Reviewed: 2026-05-12. All 10 plan parts are complete and all tests pass.
-Items are grouped by severity.
-
----
-
-## P1 — Fix: bugs and data issues
-
-### 1. `backend/data/app.db` is not gitignored
-
-`backend/data/` is where the SQLite database lives at runtime. The root `.gitignore`
-has patterns for `db.sqlite3` (Django default) but not `*.db`. If anyone runs the
-app outside Docker the database file will be silently staged.
-
-**Action:** add `backend/data/` to `.gitignore`.
+Review date: 2026-05-13
+Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ---
 
-### 2. Column rename fires a PUT `/api/board` on every keystroke
+## Backend
 
-`KanbanColumn` has an `<input>` wired to `onChange → onRename → updateBoard →
-persistBoard`. Every character typed triggers a network request, and because
-`updateBoard` calls `setBoard` before awaiting the response, rapid edits can result
-in out-of-order responses overwriting each other.
+### app/main.py
 
-**Action:** fire `persistBoard` on `onBlur` instead of `onChange`, keeping
-`onChange` for local state only.
+- **Duplicate AI call functions**: `call_openrouter` and `call_openrouter_messages` in `app/ai.py` (lines 41-66) are nearly identical. `call_openrouter` wraps a plain string prompt in a single-user message and delegates to the same HTTP logic. It could simply delegate to `call_openrouter_messages` to remove the duplication.
+
+- **Global AI history**: `app.state.ai_history` (line 38) is shared across all requests. History persists across page refreshes and is not per-user. Acceptable for single-user MVP but documented as a known limitation in `backend/AGENTS.md`. Worth re-iterating: this means a browser refresh does not reset conversation context.
+
+- **No API auth middleware**: The dummy auth is entirely client-side. Any client that can reach the backend can read/write board state and call the AI endpoint. This is an explicit MVP tradeoff (documented in `backend/AGENTS.md`) but should be flagged as a security gap for any future multi-user or public deployment.
+
+- **Env var naming inconsistency**: `PM_DB_PATH` uses a project-specific prefix while `OPENROUTER_*` vars use the service name prefix. Minor but inconsistent.
+
+### app/ai.py
+
+- **Duplicate HTTP logic**: As noted above, `call_openrouter` and `call_openrouter_messages` share the same HTTP POST logic, timeout, error handling, and response parsing. Extract the shared body into a private helper.
+
+- **System prompt may lead to invalid JSON**: The system prompt instructs the model to "Return JSON only" with specific keys. But the `_strip_code_fences` and `_extract_json` fallback logic suggests the model sometimes wraps JSON in markdown code fences. This defensive parsing works, but the prompt could be strengthened to reduce fence-wrapped responses.
+
+### app/schemas.py
+
+- **Weakly-typed board models**: `BoardState.columns` is `list[dict[str, Any]]` and `cards` is `dict[str, dict[str, Any]]`. Pydantic cannot validate the internal structure of columns (id, title, cardIds) or cards (id, title, details). Consider defining `ColumnModel` and `CardModel` for stronger validation.
+
+### app/db.py
+
+- **No connection pooling**: A new SQLite connection is opened and closed on every `get_board_state` / `update_board_state` call. Fine for single-user MVP but would not scale.
+
+### app/board_defaults.py
+
+- **Mirror comment is the only sync mechanism**: The comment says "If you change one, update the other" but there is no automated check that `DEFAULT_BOARD_STATE` matches `frontend/src/lib/kanban.ts:initialData`. These have already diverged if the frontend data changes — consider a shared fixture or a CI test.
+
+### Tests
+
+- **`conftest.py:realistic_board` uses `"description"` not `"details"`**: The test fixture at `backend/tests/conftest.py:41,45` uses `"description"` as the card field key, but real board data (both frontend `initialData` and backend `board_defaults.py`) uses `"details"`. This means the test data shape does not match production. While this does not cause test failures (Pydantic's `Any` accepts any key), it reduces test fidelity. This also means `test_board_api.py` and `test_ai.py` are testing against data that doesn't look like real data.
+
+- **Good coverage overall**: DB init and read/write are tested. API round-trips are tested. AI call is tested with stubs and a real API check (gated behind `OPENROUTER_API_KEY`). Error paths (invalid AI response, missing API key) are covered.
 
 ---
 
-### 3. `_strip_code_fences` silently mangles non-`json` language tags
+## Frontend
 
-`ai.py:89` — after stripping backticks with `trimmed.strip("`")`, the function
-checks `startswith("json")` and removes 4 characters. If the model returns a fence
-tagged with any other label (e.g. ` ```text `) the tag is left in the string and
-`json.loads` raises, falling through to `_extract_json` which may still recover it.
-The real gap is that the function never handles a newline between the fence tag and
-the JSON body: ` ```json\n{...} ` becomes `json\n{...}` after stripping. The final
-`.strip()` on `trimmed` removes the trailing newlines but not the leading `json\n`.
+### KanbanBoard.tsx
 
-Trace through the current code for ` ```json\n{"response":"ok"}\n``` `:
-- After `trimmed.strip("`")`: `json\n{"response":"ok"}\n`
-- `startswith("json")` → True, `trimmed[4:]` → `\n{"response":"ok"}\n`
-- `return trimmed.strip()` → `{"response":"ok"}` ✓
+- **Side effect inside state updater (critical)**: Lines 89-95 call `void persistBoard(nextBoard)` inside the `setBoard` updater function. In React 18+ strict mode (or concurrent features), updater functions may be called multiple times, leading to duplicate API calls. The side effect should be moved to a `useEffect` or called after the state update completes.
 
-This works today, but only because `.strip()` discards the newline left by `[4:]`.
-It breaks silently if the tag is longer than 4 chars (e.g. `jsonc`). The fix is
-simple: strip the tag with a regex or `splitlines`.
+```tsx
+// Problematic pattern:
+const updateBoard = (updater) => {
+  setBoard((prev) => {
+    const nextBoard = updater(prev ?? initialData);
+    void persistBoard(nextBoard);  // side effect inside updater
+    return nextBoard;
+  });
+};
 
-**Action:** replace the tag-stripping block with:
-```python
-lines = trimmed.splitlines()
-first = lines[0].lstrip("`").strip()
-if first in ("json", ""):
-    trimmed = "\n".join(lines[1:] if len(lines) > 1 else lines)
+// Preferred:
+const updateBoard = (updater) => {
+  setBoard((prev) => updater(prev ?? initialData));
+};
+useEffect(() => {
+  if (board) void persistBoard(board);
+}, [board]);
 ```
 
----
+- **No loading state distinction**: `isLoading` is `true` only on initial load. Subsequent `persistBoard` calls have no loading indicator — the UI updates immediately optimistically. The error banner is the only feedback for a failed save. Consider adding a saving indicator.
 
-## P2 — Fix: code quality and maintenance
+- **Optimistic updates can lose data**: The UI updates immediately, then sends the PUT request. If the PUT fails, the error banner appears but the local state has already changed. A subsequent successful update or refresh will overwrite the board with the last-applied change, potentially losing the failed update's data.
 
-### 4. Pydantic v1 compatibility shims are dead code
+### ChatSidebar.tsx
 
-`main.py:42–45` — `_dump_model` checks `hasattr(model, "model_dump")` before
-calling it. This project uses FastAPI which requires pydantic v2; the v1 `.dict()`
-path is unreachable.
+- **Fixed scroll container height**: Line 104 uses `max-h-[380px]` which does not respond to viewport height. On small screens, the message list may overflow or be cut off. Use a relative or viewport-relative unit.
 
-`ai.py:115–117` — same pattern: `hasattr(AIChatResponse, "model_validate")` always
-evaluates True.
+- **Welcome message ID format**: Line 7 uses `"msg-welcome"` while `createId` generates IDs like `"msg-a1b2c3d4e5"`. The welcome message is not deletable by ID, so this doesn't cause bugs, but it's inconsistent.
 
-**Action:** remove both shims. Call `model.model_dump()` and
-`AIChatResponse.model_validate(payload)` directly.
+### KanbanColumn.tsx
 
----
+- **No column title validation**: The title input (line 44-49) has no minimum-length or empty-string check. Empty titles can be persisted to the backend. Consider trimming and rejecting empty values on blur.
 
-### 5. Initial board data is duplicated between backend and frontend
+### KanbanCard.tsx
 
-`backend/app/board_defaults.py` and `frontend/src/lib/kanban.ts` define the exact
-same 5 columns and 8 cards. They will drift as the project evolves. The backend
-copy is the authoritative seed; the frontend copy is used as a load-failure
-fallback.
+- **Card details rendering is safe**: React escapes text content by default, so no XSS vector here. Good.
 
-**Action:** document the relationship with a short comment in each file so it is
-obvious when one changes that the other may need updating. Longer-term, the
-frontend could call `GET /api/board` unconditionally and let the backend always
-return a seeded default.
+### lib/kanban.ts
 
----
+- **`moveCard` logic is well-tested**: The function correctly handles intra-column reorder, cross-column move, and drop-on-column (append to end). Test coverage is basic (3 cases) and could be extended (non-existent card, drop at index 0, already-last position).
 
-### 6. Dead route: `GET /api/hello`
+- **`createId` uses `Math.random()`**: Not cryptographically secure, but fine for UI element IDs in an MVP.
 
-`main.py:51–53` — scaffolding route that is never called by the frontend or any
-test.
+### Accessibility
 
-**Action:** delete it.
+- **No keyboard sensor for drag-and-drop**: `PointerSensor` is configured but `KeyboardSensor` is not. Users relying on keyboard navigation cannot move cards. Add `KeyboardSensor` from `@dnd-kit/sortable`.
+
+- **Column title input lacks `aria-label`**: It has `aria-label="Column title"` on line 49 — good.
 
 ---
 
-### 7. `app.state.ai_history` is global, not per-user
+## Build and Configuration
 
-`main.py:38` — the conversation history is attached to the app instance, shared
-across all requests. For the MVP single-user case this is fine. However, if a
-second user were added it would see the first user's history.
+### Dockerfile
 
-**Action:** no change needed for MVP. Document this as a known limitation in
-`backend/AGENTS.md` so it is not forgotten when multi-user is added.
+- **`uv pip install --system`**: Uses pip-compatible mode rather than `uv sync`. Does not leverage uv's lockfile (`uv.lock`). If lockfile reproducibility is desired, switch to `uv sync` with a `pyproject.toml`.
 
----
+- **Multi-stage build**: Good separation of Node frontend build and Python runtime. The `node:20-slim` and `python:3.12-slim` stages are appropriately minimal.
 
-## P3 — Consider: test coverage gaps
+### docker-compose.yml
 
-### 8. `persistBoard` is never asserted in unit tests
+- **No volume mount for database**: `backend/data/app.db` is created inside the container and lost on `docker compose down`. If persistence across restarts is desired (even for MVP), add:
 
-`KanbanBoard.test.tsx` verifies UI state (card added, column title changed) but
-never asserts that `fetch` was called with the right payload. If `persistBoard`
-silently broke, all unit tests would still pass.
-
-**Action:** add an assertion in the "renames a column" and "adds and removes a
-card" tests that the mock `fetch` was called with `method: "PUT"` and the expected
-board shape.
-
----
-
-### 9. ChatSidebar error path has no test
-
-`ChatSidebar.test.tsx` only covers the success case. The error branch (fetch
-rejects or API returns non-200) sets an error message and appends a fallback
-assistant message.
-
-**Action:** add a test that mocks `fetch` to return a 500 and asserts the error
-message and the fallback assistant message are rendered.
-
----
-
-### 10. No e2e test for the AI chat sidebar
-
-The Playwright suite covers login, board load, card add, and drag-and-drop but
-skips the chat sidebar entirely.
-
-**Action:** add a Playwright test that mocks `POST /api/ai/chat`, sends a message,
-and verifies the assistant response appears and the board updates if the response
-includes one.
-
----
-
-### 11. `test_call_openrouter_requires_key` uses manual try/except
-
-`test_ai.py:27–34` — wraps the call in a bare `try/except` rather than using
-`pytest.raises`. If the function raises the wrong exception type the test passes
-silently.
-
-**Action:** rewrite as:
-```python
-with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
-    call_openrouter("2+2")
+```yaml
+volumes:
+  - ./backend/data:/app/backend/data
 ```
 
+### scripts/test-backend.sh
+
+- **Hardcoded path**: Line 4 references `/Users/ryan/projects/pm/.venv/bin/python` which is specific to the developer's machine. Other contributors will get an error. Use a relative virtualenv path or fall back fully to `python -m pytest`.
+
+### playwright.config.ts
+
+- **Port mismatch for Docker**: Playwright is configured to run against `127.0.0.1:3000` (Next.js dev server). When running the app in Docker, the backend serves on port 8000. The config does not support this mode. Consider making the base URL configurable via `PLAYWRIGHT_BASE_URL` env var.
+
+### requirements.txt
+
+- **No version pins**: All five dependencies are unpinned. This risks unexpected breakage from upstream releases. Pin to major.minor at minimum (e.g., `fastapi>=0.110,<1`).
+
 ---
 
-### 12. `DummyResponse.raise_for_status` passes `None` to `httpx.HTTPStatusError`
+## Documentation
 
-`test_ai.py:20–22` — `httpx.HTTPStatusError.__init__` accepts `request` and
-`response` as required positional args. Passing `None` works today but is
-technically invalid and could break on an httpx version bump.
+### Strengths
 
-**Action:** construct minimal valid objects or use `monkeypatch` / `respx` to stub
-at the transport layer instead of building a hand-rolled response class.
+- `AGENTS.md` files at root, `backend/`, `frontend/`, and `scripts/` provide good context for AI-assisted development.
+- `PLAN.md` has clear checklists and success criteria.
+- `DATABASE.md` explains the JSON-blob tradeoff.
+- `RUNNING.md` covers start/stop for all three platforms.
+
+### Gaps
+
+- **No API reference**: Endpoints and their request/response shapes are documented only in `backend/AGENTS.md` (briefly) and in the source code. A dedicated API doc would help contributors.
+- **No architecture diagram**: A simple diagram showing the request flow (browser -> FastAPI -> SQLite / OpenRouter) would help new contributors.
+- **No frontend component hierarchy**: The `frontend/AGENTS.md` lists key files but does not describe how they compose.
 
 ---
 
-## Minor observations (no action required)
+## Summary
 
-- `frontend/src/lib/kanban.ts:164` — `createId` uses `Math.random()`. Fine for
-  local UI IDs; would need replacement if IDs ever become security-sensitive.
-- `backend/tests/test_board_api.py` has only one test. The API surface is thin so
-  this is proportionate, but a test for a missing board (first-run board creation
-  via the API) would improve confidence.
-- `docker-compose.yml` does not pin a restart policy. Adding `restart: unless-stopped`
-  would make local use more resilient to machine reboots, though this is purely a
-  convenience choice.
+### High priority
+
+1. Move side effects out of React state updater in `KanbanBoard.tsx:89-95`.
+2. Fix `description` vs `details` mismatch in test fixtures.
+3. Pin dependency versions in `requirements.txt`.
+4. Add a volume mount for the SQLite database in `docker-compose.yml`.
+5. Fix the hardcoded path in `scripts/test-backend.sh`.
+
+### Medium priority
+
+6. Add `KeyboardSensor` for accessible drag-and-drop.
+7. Make `ChatSidebar` scroll area height responsive.
+8. Replace generic dict types in `schemas.py` with specific Pydantic models.
+9. Deduplicate `call_openrouter` and `call_openrouter_messages`.
+
+### Low priority
+
+10. Strengthen AI system prompt to reduce markdown-fenced responses.
+11. Add `moveCard` edge-case tests.
+12. Document endpoints formally.
+13. Fix env var naming inconsistency.
