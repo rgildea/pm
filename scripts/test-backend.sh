@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -x "/Users/ryan/projects/pm/.venv/bin/python" ]; then
-  /Users/ryan/projects/pm/.venv/bin/python -m pytest /Users/ryan/projects/pm/backend
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  "$ROOT/.venv/bin/python" -m pytest "$ROOT/backend"
 else
-  python -m pytest /Users/ryan/projects/pm/backend
+  python -m pytest "$ROOT/backend"
 fi

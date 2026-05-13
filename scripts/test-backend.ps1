@@ -1,8 +1,10 @@
 $ErrorActionPreference = "Stop"
 
-$pythonPath = "/Users/ryan/projects/pm/.venv/bin/python"
+$root = Split-Path -Parent $PSScriptRoot
+
+$pythonPath = Join-Path $root ".venv" "bin" "python"
 if (Test-Path $pythonPath) {
-  & $pythonPath -m pytest /Users/ryan/projects/pm/backend
+  & $pythonPath -m pytest (Join-Path $root "backend")
 } else {
-  python -m pytest /Users/ryan/projects/pm/backend
+  python -m pytest (Join-Path $root "backend")
 }

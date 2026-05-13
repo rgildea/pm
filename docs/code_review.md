@@ -98,7 +98,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### scripts/test-backend.sh
 
-- **Hardcoded path**: Line 4 references `/Users/ryan/projects/pm/.venv/bin/python` which is specific to the developer's machine. Other contributors will get an error. Use a relative virtualenv path or fall back fully to `python -m pytest`.
+- **Hardcoded paths**: Both `scripts/test-backend.sh` and `scripts/test-backend.ps1` had hardcoded absolute paths, specific to the developer's machine.
+- **[FIXED]** Replaced with a `$ROOT` variable derived from the script's own location. Works on any machine.
 
 ### playwright.config.ts
 
@@ -136,7 +137,7 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 2. ~~Fix `description` vs `details` mismatch in test fixtures.~~ **[FIXED]**
 3. ~~Pin dependency versions in `requirements.txt`.~~ **[FIXED]** Switched to `pyproject.toml` + `uv.lock` with `uv sync --frozen`.
 4. ~~Add a volume mount for the SQLite database in `docker-compose.yml`.~~ **[FIXED]**
-5. Fix the hardcoded path in `scripts/test-backend.sh`.
+5. ~~Fix the hardcoded path in `scripts/test-backend.sh`.~~ **[FIXED]**
 
 ### Medium priority
 
