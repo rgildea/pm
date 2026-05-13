@@ -10,20 +10,19 @@ RUN npm run build
 
 FROM python:3.12-slim
 
-WORKDIR /app
+WORKDIR /app/backend
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN pip install --no-cache-dir uv
 
-COPY backend/requirements.txt /app/requirements.txt
-RUN uv pip install --system -r /app/requirements.txt
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-dev
+ENV PATH="/app/backend/.venv/bin:$PATH"
 
 COPY backend /app/backend
 COPY --from=frontend-build /app/frontend/out /app/backend/static
-
-WORKDIR /app/backend
 
 EXPOSE 8000
 
