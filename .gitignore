@@ -173,6 +173,11 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# macOS
 .DS_Store
 
+# Visual Studio Code settings
 .vscode/settings.json
+
+# Ignore the data directory, which may contain large files or sensitive information
+backend/data/
