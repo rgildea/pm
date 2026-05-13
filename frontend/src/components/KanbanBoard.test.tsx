@@ -1,6 +1,6 @@
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { initialData } from "@/lib/kanban";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -35,8 +35,10 @@ const mockFetch = () => {
   return fetchMock;
 };
 
+let fetchMock: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
-  mockFetch();
+  fetchMock = mockFetch();
 });
 
 afterEach(() => {
@@ -57,6 +59,16 @@ describe("KanbanBoard", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "New Name");
     expect(input).toHaveValue("New Name");
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/board",
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining("New Name"),
+        }),
+      );
+    });
   });
 
   it("adds and removes a card", async () => {
@@ -76,6 +88,13 @@ describe("KanbanBoard", () => {
     await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
 
     expect(within(column).getByText("New card")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/board",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining("New card"),
+      }),
+    );
 
     const deleteButton = within(column).getByRole("button", {
       name: /delete new card/i,
@@ -83,5 +102,9 @@ describe("KanbanBoard", () => {
     await userEvent.click(deleteButton);
 
     expect(within(column).queryByText("New card")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/board",
+      expect.objectContaining({ method: "PUT" }),
+    );
   });
 });

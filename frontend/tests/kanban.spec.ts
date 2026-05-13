@@ -87,6 +87,32 @@ test("adds a card to a column", async ({ page }) => {
   await expect(firstColumn.getByText("Playwright card")).toBeVisible();
 });
 
+test("sends a chat message and applies a board update", async ({ page }) => {
+  const aiUpdatedBoard = {
+    ...initialBoard,
+    columns: initialBoard.columns.map((col) => {
+      if (col.id === "col-backlog") return { ...col, cardIds: ["card-2"] };
+      if (col.id === "col-done") return { ...col, cardIds: ["card-7", "card-8", "card-1"] };
+      return col;
+    }),
+  };
+
+  await page.route("**/api/ai/chat", async (route) => {
+    await route.fulfill({ json: { response: "Moved it for you.", board: aiUpdatedBoard } });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("Password").fill("password");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
+
+  await page.getByLabel(/your request/i).fill("Move card-1 to Done.");
+  await page.getByRole("button", { name: /send/i }).click();
+
+  await expect(page.getByText("Moved it for you.")).toBeVisible();
+  await expect(page.getByTestId("column-col-done").getByTestId("card-card-1")).toBeVisible();
+});
+
 test("moves a card between columns", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Password").fill("password");

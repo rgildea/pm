@@ -18,7 +18,7 @@ class DummyResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            raise httpx.HTTPStatusError("error", request=None, response=None)
+            raise httpx.HTTPError("error")
 
     def json(self) -> dict:
         return self._payload
@@ -26,12 +26,8 @@ class DummyResponse:
 
 def test_call_openrouter_requires_key(monkeypatch) -> None:
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    try:
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
         call_openrouter("2+2")
-    except RuntimeError as exc:
-        assert "OPENROUTER_API_KEY" in str(exc)
-    else:
-        raise AssertionError("Expected RuntimeError when key is missing")
 
 
 def test_call_openrouter_returns_message(monkeypatch) -> None:

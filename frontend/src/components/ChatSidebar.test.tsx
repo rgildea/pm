@@ -39,6 +39,20 @@ afterEach(() => {
 });
 
 describe("ChatSidebar", () => {
+  it("shows an error when the request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("error", { status: 500 })),
+    );
+    const onBoardUpdate = vi.fn();
+    render(<ChatSidebar board={initialData} onBoardUpdate={onBoardUpdate} />);
+    await userEvent.type(screen.getByLabelText(/your request/i), "Move a card.");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+    expect(await screen.findByText("Unable to reach the AI assistant.")).toBeInTheDocument();
+    expect(screen.getByText("Sorry, I could not complete that request.")).toBeInTheDocument();
+    expect(onBoardUpdate).not.toHaveBeenCalled();
+  });
+
   it("sends a message and applies board updates", async () => {
     const onBoardUpdate = vi.fn();
     render(<ChatSidebar board={initialData} onBoardUpdate={onBoardUpdate} />);
