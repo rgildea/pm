@@ -25,7 +25,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### app/schemas.py
 
-- **Weakly-typed board models**: `BoardState.columns` is `list[dict[str, Any]]` and `cards` is `dict[str, dict[str, Any]]`. Pydantic cannot validate the internal structure of columns (id, title, cardIds) or cards (id, title, details). Consider defining `ColumnModel` and `CardModel` for stronger validation.
+- **Weakly-typed board models**: `BoardState.columns` was `list[dict[str, Any]]` and `cards` was `dict[str, dict[str, Any]]`. Pydantic could not validate the internal structure of columns or cards.
+- **[FIXED]** Replaced with `Column` and `Card` Pydantic models with explicit fields.
 
 ### app/db.py
 
@@ -145,7 +146,7 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 6. ~~Add `KeyboardSensor` for accessible drag-and-drop.~~ **[FIXED]**
 7. ~~Make `ChatSidebar` scroll area height responsive.~~ **[FIXED]**
-8. Replace generic dict types in `schemas.py` with specific Pydantic models.
+8. ~~Replace generic dict types in `schemas.py` with specific Pydantic models.~~ **[FIXED]**
 9. Deduplicate `call_openrouter` and `call_openrouter_messages`.
 
 ### Low priority

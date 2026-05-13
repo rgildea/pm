@@ -1,11 +1,21 @@
-from typing import Any
-
 from pydantic import BaseModel
 
 
+class Card(BaseModel):
+    id: str
+    title: str
+    details: str
+
+
+class Column(BaseModel):
+    id: str
+    title: str
+    cardIds: list[str]
+
+
 class BoardState(BaseModel):
-    columns: list[dict[str, Any]]
-    cards: dict[str, dict[str, Any]]
+    columns: list[Column]
+    cards: dict[str, Card]
 
 
 class BoardUpdateRequest(BaseModel):
