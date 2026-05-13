@@ -77,7 +77,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### Accessibility
 
-- **No keyboard sensor for drag-and-drop**: `PointerSensor` is configured but `KeyboardSensor` is not. Users relying on keyboard navigation cannot move cards. Add `KeyboardSensor` from `@dnd-kit/sortable`.
+- **No keyboard sensor for drag-and-drop**: `PointerSensor` was the only sensor configured. Keyboard-only users could not move cards.
+- **[FIXED]** Added `KeyboardSensor` with `sortableKeyboardCoordinates`.
 
 - **Column title input lacks `aria-label`**: It has `aria-label="Column title"` on line 49 — good.
 
@@ -141,7 +142,7 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### Medium priority
 
-6. Add `KeyboardSensor` for accessible drag-and-drop.
+6. ~~Add `KeyboardSensor` for accessible drag-and-drop.~~ **[FIXED]**
 7. Make `ChatSidebar` scroll area height responsive.
 8. Replace generic dict types in `schemas.py` with specific Pydantic models.
 9. Deduplicate `call_openrouter` and `call_openrouter_messages`.

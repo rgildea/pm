@@ -8,12 +8,16 @@ import {
   closestCorners,
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import {
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 
 type KanbanBoardProps = {
@@ -30,6 +34,9 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
