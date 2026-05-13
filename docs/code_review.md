@@ -125,9 +125,10 @@ volumes:
 
 - **Port mismatch for Docker**: Playwright is configured to run against `127.0.0.1:3000` (Next.js dev server). When running the app in Docker, the backend serves on port 8000. The config does not support this mode. Consider making the base URL configurable via `PLAYWRIGHT_BASE_URL` env var.
 
-### requirements.txt
+### requirements.txt / pyproject.toml
 
-- **No version pins**: All five dependencies are unpinned. This risks unexpected breakage from upstream releases. Pin to major.minor at minimum (e.g., `fastapi>=0.110,<1`).
+- **No version pins**: All five dependencies were unpinned, risking unexpected breakage.
+- **[FIXED]** Replaced `requirements.txt` with `pyproject.toml` + `uv.lock`. The lockfile pins exact versions for all 22 packages. Dockerfile now uses `uv sync --frozen --no-dev` for reproducible builds.
 
 ---
 
@@ -154,7 +155,7 @@ volumes:
 
 1. Move side effects out of React state updater in `KanbanBoard.tsx:89-95`.
 2. Fix `description` vs `details` mismatch in test fixtures.
-3. Pin dependency versions in `requirements.txt`.
+3. ~~Pin dependency versions in `requirements.txt`.~~ **[FIXED]** Switched to `pyproject.toml` + `uv.lock` with `uv sync --frozen`.
 4. Add a volume mount for the SQLite database in `docker-compose.yml`.
 5. Fix the hardcoded path in `scripts/test-backend.sh`.
 
