@@ -93,12 +93,8 @@ Scope: Full project audit of backend, frontend, tests, and build configuration.
 
 ### docker-compose.yml
 
-- **No volume mount for database**: `backend/data/app.db` is created inside the container and lost on `docker compose down`. If persistence across restarts is desired (even for MVP), add:
-
-```yaml
-volumes:
-  - ./backend/data:/app/backend/data
-```
+- **No volume mount for database**: `backend/data/app.db` was created inside the container and lost on `docker compose down`.
+- **[FIXED]** Added a bind mount `./backend/data:/app/backend/data` to `docker-compose.yml`.
 
 ### scripts/test-backend.sh
 
@@ -139,7 +135,7 @@ volumes:
 1. ~~Move side effects out of React state updater in `KanbanBoard.tsx:89-95`.~~ **[FIXED]**
 2. ~~Fix `description` vs `details` mismatch in test fixtures.~~ **[FIXED]**
 3. ~~Pin dependency versions in `requirements.txt`.~~ **[FIXED]** Switched to `pyproject.toml` + `uv.lock` with `uv sync --frozen`.
-4. Add a volume mount for the SQLite database in `docker-compose.yml`.
+4. ~~Add a volume mount for the SQLite database in `docker-compose.yml`.~~ **[FIXED]**
 5. Fix the hardcoded path in `scripts/test-backend.sh`.
 
 ### Medium priority
