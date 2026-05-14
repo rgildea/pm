@@ -21,6 +21,7 @@ ROOT_DIR = BASE_DIR.parent
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "app.db"
+MAX_AI_HISTORY_MESSAGES = 20
 
 
 def _default_db_path() -> Path:
@@ -81,6 +82,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": ai_response.response})
+        del history[:-MAX_AI_HISTORY_MESSAGES]
 
         response_board = None
         if ai_response.board is not None:

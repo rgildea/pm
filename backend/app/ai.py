@@ -13,7 +13,10 @@ AI_CHAT_SYSTEM_PROMPT = (
     "You are a project management assistant. "
     "Return JSON only. The JSON must include a 'response' string and may include "
     "a 'board' object. If no board changes are needed, omit 'board' or set it to null. "
-    "Never include extra keys."
+    "Never include extra keys. "
+    "When you include a board, every id in any column's cardIds must also exist as a "
+    "key in the cards object, and every key in cards must appear in exactly one "
+    "column's cardIds. Preserve existing card and column ids when possible."
 )
 
 

@@ -4,231 +4,314 @@ Date: 2026-05-13
 
 ## Summary
 
-The MVP is well-scoped and mostly clean. The codebase is simple by design, and that restraint is a strength. Issues found are mostly correctness bugs, a few structural risks, and one security concern. Nothing is catastrophic, but several items should be addressed before any production use.
+The codebase remains tight and well-scoped. Compared to the previous review (`docs/code_review_old.md`), several high-priority items have been addressed: `_strip_code_fences` now slices the fence delimiters correctly, `KanbanColumn` uses an explicit edit-state pattern that preserves in-progress edits while honoring external updates, `call_openrouter` delegates to `call_openrouter_messages` (no duplication), and `BoardState` now validates `Card` and `Column` shapes with Pydantic.
+
+The issues that remain are mostly around resource hygiene (unbounded AI history), data integrity (no referential validation between `cardIds` and `cards`), and a handful of small correctness and ergonomics concerns. None block the MVP as scoped, but several should be fixed before any multi-user or network-accessible deployment.
 
 ---
 
 ## Backend
 
-### `backend/app/board_defaults.py` — module-level file read at import time
+### `backend/app/main.py` — `app.state.ai_history` grows unbounded
 
 ```python
-with open(BOARD_DEFAULTS_PATH) as _f:
-    _data = json.load(_f)
+app.state.ai_history = []
+...
+history.append({"role": "user", "content": payload.message})
+history.append({"role": "assistant", "content": ai_response.response})
 ```
 
-The file is opened at module import. If the path does not exist (e.g. in a test environment or alternative deployment layout), the entire application fails to start with an unhandled `FileNotFoundError`. The Docker build copies `frontend/default-board.json` to the expected location, but this is a fragile coupling. The path is also computed relative to `__file__` across three directory levels (`parent.parent.parent / "frontend" / ...`), which will silently break if the file layout changes.
+Every chat turn appends two messages and they are never trimmed. The full history is then re-sent to OpenRouter on every subsequent call (`build_ai_messages` spreads `*history` into the message list), which means latency, token usage, and cost grow linearly with session length. A long-running process will eventually exceed the model context window and break.
 
-**Recommendation:** Load the defaults lazily inside `init_db` or accept them as a parameter. Alternatively, embed the JSON directly in `board_defaults.py` to remove the cross-package file dependency entirely.
-
----
-
-### `backend/app/db.py` — `_row_to_board` ignores `row_factory`
-
-```python
-def _row_to_board(row: sqlite3.Row) -> BoardRecord:
-    return BoardRecord(board_id=row[0], title=row[1], state=json.loads(row[2]))
-```
-
-`_get_board` sets `connection.row_factory = sqlite3.Row`, which makes rows accessible by column name. Despite this, `_row_to_board` accesses columns by integer index (`row[0]`, `row[1]`, `row[2]`). The two styles are inconsistent. Integer indexing works here because `sqlite3.Row` supports both, but setting the `row_factory` on the connection is a side-effect that is easy to misread and the name-based access it enables is never used.
-
-**Recommendation:** Remove the `row_factory` assignment and keep integer indexing, or switch to named access (`row["id"]`, `row["title"]`, `row["state_json"]`) and drop the integers.
-
----
-
-### `backend/app/db.py` — `update_board_state` reads then writes without a transaction
-
-```python
-def update_board_state(...):
-    with _connect(db_path) as connection:
-        board = _get_board(connection, user_id)
-        ...
-        if board is None:
-            # INSERT
-        else:
-            # UPDATE
-```
-
-The check for existence and the subsequent write are not atomic. Under concurrent access (not currently possible with the single-user MVP, but relevant if sessions are ever added), two writers could both observe `board is None` and attempt to insert, causing a `UNIQUE` constraint violation. SQLite's `INSERT OR REPLACE` or an upsert (`INSERT ... ON CONFLICT DO UPDATE`) would eliminate this race entirely.
-
-**Recommendation:** Replace the read-then-branch with a single `INSERT OR REPLACE INTO boards ...` statement.
-
----
-
-### `backend/app/ai.py` — `_strip_code_fences` uses `str.strip("` `` ` ``")` incorrectly
-
-```python
-trimmed = trimmed.strip("`")
-```
-
-`str.strip(chars)` removes any characters in the given set from both ends — it does not strip a literal three-backtick sequence. A string like `` `foo` `` would be fully stripped when only the fence characters `` ``` `` should be removed. The current code works accidentally for the common `` ```json\n...\n``` `` pattern because the inner content does not start or end with backticks, but it would corrupt content that legitimately starts or ends with a backtick.
-
-**Recommendation:** Use `lstrip("```")` is still wrong for the same reason. Strip the leading `` ``` `` and trailing `` ``` `` with `removeprefix`/`removesuffix` or a regex:
-
-```python
-if trimmed.startswith("```") and trimmed.endswith("```"):
-    trimmed = trimmed[3:]   # remove leading ```
-    trimmed = trimmed[:-3]  # remove trailing ```
-    if trimmed.startswith("json"):
-        trimmed = trimmed[4:]
-```
-
----
-
-### `backend/app/ai.py` — `MODEL_NAME` is resolved at import time
-
-```python
-MODEL_NAME = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
-```
-
-This is evaluated once when the module is imported. If `OPENROUTER_MODEL` is set after the module loads (e.g. in tests via `monkeypatch.setenv`), the cached value will be stale. In the current test suite this is not exercised, but it is a latent inconsistency.
-
-**Recommendation:** Read the environment variable inside `call_openrouter_messages` or inside `_openrouter_headers`.
-
----
-
-### `backend/app/main.py` — global in-memory AI history is not per-user
-
-The `AGENTS.md` acknowledges this:
-
-> `app.state.ai_history` is global to the process, not per-user.
-
-For the MVP this is acceptable, but the risk is that the history grows unbounded. A long-running process will accumulate history indefinitely, eventually sending a very large prompt to OpenRouter with every request (increased latency and cost). There is no trimming or eviction.
-
-**Recommendation:** Cap history at a fixed number of turns (e.g. last 20 messages) before building the message list.
+**Recommendation:** Cap the in-memory history at e.g. the last 20 messages (10 turns) when building the message list, or evict from the front when the list exceeds that size.
 
 ---
 
 ### `backend/app/main.py` — no authentication on API endpoints
 
-All API endpoints (`/api/board`, `/api/ai/chat`) are publicly accessible with no authentication check. Authentication is handled entirely in the frontend as client-side state. Any request to `http://localhost:8000/api/board` bypasses the login screen entirely.
+`/api/board`, `/api/ai/chat`, and `/api/ai/test` are all unauthenticated. The login screen is a pure client-side gate — anyone who can reach port 8000 can read/write the board and burn OpenRouter credits via `/api/ai/chat`. This is acceptable for a single-user local-only MVP, but the README and AGENTS notes should call it out as a hard blocker before any deployment beyond `localhost`.
 
-For a locally-run MVP this is acceptable per the stated scope, but it should be explicitly noted as a blocker before any network-accessible deployment.
+A second concern: `/api/ai/test` is wired up in production. It is useful during development but does not need to ship — every public hit costs an OpenRouter request.
 
 ---
 
-### `backend/pyproject.toml` — `pydantic` not listed as a dependency
+### `backend/app/main.py` — AI-returned board is persisted without referential validation
 
-`pydantic` is used in `app/schemas.py` but is not declared in `pyproject.toml`. It works in practice because `fastapi` pulls it in as a transitive dependency, but the missing explicit declaration means the version is not pinned in `uv.lock` directly and could be broken by a FastAPI upgrade that drops or changes its Pydantic dependency.
+```python
+if ai_response.board is not None:
+    response_board = ai_response.board.model_dump()
+    update_board_state(db_path, response_board)
+```
 
-**Recommendation:** Add `pydantic` to the `dependencies` list in `pyproject.toml`.
+The Pydantic `BoardState` validates the *shape* of columns and cards, but nothing checks that:
+
+- every `cardIds` entry references a key in `cards`,
+- every key in `cards` is referenced by exactly one column,
+- card IDs are unique across columns.
+
+The model is plenty happy with a board where `columns[0].cardIds == ["ghost-id"]` and `cards == {}`. The frontend then renders `column.cardIds.map(id => boardData.cards[id])` and produces `undefined` entries, which `KanbanCard` will dereference (`card.title`) and crash on. See the matching frontend item below.
+
+**Recommendation:** Add a validator on `BoardState` (Pydantic `model_validator(mode="after")`) that enforces `set(itertools.chain(*[c.cardIds for c in columns])) == set(cards.keys())` and rejects duplicates. Return a 422 to the AI request when the model returns an inconsistent board.
+
+---
+
+### `backend/app/db.py` — `update_board_state` read-then-write is not atomic
+
+```python
+with _connect(db_path) as connection:
+    board = _get_board(connection, user_id)
+    ...
+    if board is None:
+        # INSERT
+    else:
+        # UPDATE
+```
+
+The presence check and the subsequent write are separate statements. Under concurrent writers two callers could both observe `board is None` and race to `INSERT`, causing a `UNIQUE` constraint violation. Not exploitable today (single user, single process), but trivial to remove with an upsert.
+
+**Recommendation:** Replace the branch with a single `INSERT INTO boards ... ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`. The current code keys by `user_id`, so the unique key it conflicts on is the implicit one — switch the conflict target to `user_id` (which would require a `UNIQUE` constraint on that column, currently absent — see next item).
+
+---
+
+### `backend/app/db.py` — no uniqueness constraint on `boards.user_id`
+
+The schema permits multiple board rows per `user_id`. Today the application code only ever creates one (via the read-then-branch in `update_board_state`), but the constraint is implicit rather than enforced. If a future concurrent insertion slips through, `_get_board` will silently return whichever row `fetchone()` happens to pick.
+
+**Recommendation:** Add `UNIQUE` to the `user_id` column declaration in `CREATE TABLE boards`, or a partial index if multiple boards per user are eventually planned.
+
+---
+
+### `backend/app/db.py` — `_row_to_board` uses integer indexing after setting `row_factory`
+
+```python
+def _get_board(connection, user_id):
+    connection.row_factory = sqlite3.Row
+    row = connection.execute(...).fetchone()
+    ...
+
+def _row_to_board(row):
+    return BoardRecord(board_id=row[0], title=row[1], state=json.loads(row[2]))
+```
+
+`row_factory = sqlite3.Row` enables name-based access (`row["id"]`), but the row is then read by integer index. Both work, but the assignment is dead code — either use the names or drop the `row_factory` line. Also note that `connection.row_factory = sqlite3.Row` mutates connection state but the connection is closed at the end of the `with` block, so this isn't actually problematic — just inconsistent.
+
+---
+
+### `backend/app/board_defaults.py` — file read at module import time
+
+```python
+BOARD_DEFAULTS_PATH = Path(__file__).resolve().parent.parent.parent / "frontend" / "default-board.json"
+
+with open(BOARD_DEFAULTS_PATH) as _f:
+    _data = json.load(_f)
+```
+
+The path traverses three levels up and assumes a `frontend/` sibling at runtime. The Dockerfile copies `frontend/default-board.json` into the image at the right relative location (line 25), so this works, but the coupling is fragile: any change to the directory layout silently breaks application startup with an unhandled `FileNotFoundError`. Worse, the file is read at *import* time, so the error fires while FastAPI is wiring routes rather than at a clear startup hook.
+
+**Recommendation:** Either inline the defaults into a Python literal in `board_defaults.py` (removing the cross-package file dependency entirely), or load lazily inside `_create_board` and surface a clear error if missing.
+
+---
+
+### `backend/app/ai.py` — `MODEL_NAME` resolved at import
+
+```python
+MODEL_NAME = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
+```
+
+Evaluated once on import. Setting `OPENROUTER_MODEL` in a test via `monkeypatch.setenv` after the module loads has no effect. The current tests do not exercise this, so it is latent.
+
+**Recommendation:** Move the lookup inside `call_openrouter_messages` (`model = os.getenv("OPENROUTER_MODEL", ...)`).
+
+---
+
+### `backend/app/ai.py` — `_extract_json` fallback may grab the wrong braces
+
+```python
+start = stripped.find("{")
+end = stripped.rfind("}")
+```
+
+If the model returns text like `"Here is the JSON: {response: 'use {curly}', ...}"`, `find("{")` and `rfind("}")` will straddle the inner-brace text correctly (greediest possible window), but they will also grab any unbalanced brace count in prose, e.g. `"Note the {bracket} usage. {actual: json}"` produces a slice that includes both pairs and parses as invalid JSON. The current logic is best-effort, and the `_strip_code_fences` path already handles the common case — the fallback exists primarily for chatty models. Acceptable for the MVP, but worth a comment, and ideally constrained by also requiring `_extract_json` to find a top-level `}` that balances the leading `{`.
+
+---
+
+### `backend/pyproject.toml` — `pydantic` is not declared
+
+`app/schemas.py` imports `pydantic`, but `pyproject.toml`'s `dependencies` list does not include it. It works because `fastapi` declares it transitively, but the project should pin what it directly imports — otherwise a future FastAPI version that drops or replaces Pydantic silently breaks the build.
+
+**Recommendation:** Add `pydantic` to `dependencies`.
+
+---
+
+### `backend/app/ai.py` — system prompt does not require referential consistency
+
+The system prompt instructs the model to return JSON with `response` and optional `board`, but says nothing about referential integrity, ID format, or the requirement that `cardIds` references must exist in `cards`. Combined with the missing backend validator (see above), the model can return a malformed board that crashes the frontend.
+
+**Recommendation:** Add explicit constraints to `AI_CHAT_SYSTEM_PROMPT`: "Every id in any column's cardIds must also exist as a key in cards. Every key in cards must appear in exactly one column's cardIds. Preserve existing card and column IDs when possible."
 
 ---
 
 ## Frontend
 
-### `frontend/src/app/page.tsx` — credentials hardcoded in client-side bundle
+### `frontend/src/components/KanbanBoard.tsx` — `cards` prop may contain `undefined` entries
 
-```typescript
+```tsx
+cards={column.cardIds.map((cardId) => boardData.cards[cardId])}
+```
+
+If the AI returns an inconsistent board (see backend item above), this produces an array containing `undefined`, which is then passed to `KanbanCard` as `card={undefined}` — and `KanbanCard` dereferences `card.title` and `card.id` immediately. The component will throw, and the whole board will fail to render until the user manually edits the database or reloads with a clean board.
+
+**Recommendation:** Either guard at this call site (`.filter(Boolean)` plus a typecast, or `flatMap`), or add an effect in `KanbanBoard` that prunes orphaned `cardIds` before render. The best fix is upstream — reject malformed AI boards in the backend (see above).
+
+---
+
+### `frontend/src/components/KanbanColumn.tsx` — empty edited title is committed
+
+```tsx
+const handleBlur = () => {
+  if (editingTitle !== null) {
+    onRename(column.id, editingTitle);
+    setEditingTitle(null);
+  }
+};
+```
+
+The guard checks `!== null`, not "is non-empty". A user who clears the input and blurs commits `""` as the column title. The board has no display fallback for an empty column title — the column header becomes a blank line.
+
+**Recommendation:** Treat empty/whitespace-only edits as cancels: `if (editingTitle !== null && editingTitle.trim()) onRename(...); else if (editingTitle === "") setEditingTitle(null);` — and make sure the input snaps back to `column.title` on cancel.
+
+---
+
+### `frontend/src/components/KanbanColumn.tsx` — blur fires `onRename` even when unchanged
+
+If the user clicks the input and clicks away without typing, `editingTitle` is still `null` (never set), so `handleBlur` no-ops — good. But if the user *types* and then deletes back to the original title, `editingTitle === column.title` and `onRename` is invoked anyway, triggering a `persistBoard` PUT. Not a bug, just a wasted round-trip.
+
+**Recommendation:** Skip the call when `editingTitle === column.title`.
+
+---
+
+### `frontend/src/components/KanbanCard.tsx` — drag listeners cover the Remove button
+
+```tsx
+<article
+  ref={setNodeRef}
+  {...attributes}
+  {...listeners}
+>
+  ...
+  <button onClick={() => onDelete(card.id)}>Remove</button>
+</article>
+```
+
+`{...listeners}` from `useSortable` is spread on the article that also contains the Remove button. On pointer-press the dnd-kit `PointerSensor` activates only after 6px of movement (`activationConstraint: { distance: 6 }`), so a quick click of Remove is safe in practice. Still, the more idiomatic pattern is to apply `listeners` to a dedicated drag handle (or to the title area only), so accidentally long-pressing the Remove button can't begin a drag.
+
+This is a minor UX/safety issue, not a correctness bug.
+
+---
+
+### `frontend/src/components/ChatSidebar.tsx` — message list does not auto-scroll
+
+The container uses `overflow-y-auto` but there is no effect to scroll to the latest message after a send. After two or three exchanges, new replies render below the visible window.
+
+**Recommendation:** Add a `useRef` on the messages container and a `useEffect` that scrolls to the bottom when `messages.length` changes.
+
+---
+
+### `frontend/src/components/ChatSidebar.tsx` — chat history is never trimmed
+
+The frontend keeps every message in component state for the life of the session. Lower-impact than the backend's unbounded `ai_history` (this one resets on logout/refresh), but worth noting if sessions are ever long-lived.
+
+---
+
+### `frontend/src/app/page.tsx` — credentials hardcoded in the client bundle
+
+```tsx
 const VALID_USERNAME = "user";
 const VALID_PASSWORD = "password";
 ```
 
-These are compiled into the JavaScript bundle delivered to every browser. Anyone who views the page source or inspects the bundle can read them. The `AGENTS.md` and `PLAN.md` acknowledge the dummy-auth limitation, but it is worth flagging explicitly: this is not just "simple auth" — it is no auth at all from a security standpoint. The login form provides UX gating only.
-
-This is a known MVP limitation but should be documented clearly and addressed before any real deployment.
+These ship to every browser as plain strings. The login screen is UX gating, not authentication. Documented as an MVP limitation, but worth flagging in the README/onboarding alongside the unauthenticated API endpoints.
 
 ---
 
-### `frontend/src/components/KanbanColumn.tsx` — local title state diverges from prop
+### `frontend/src/lib/kanban.ts` — `createId` uses `Math.random()` and time
 
-```typescript
-const [localTitle, setLocalTitle] = useState(column.title);
-```
-
-`localTitle` is initialised once from `column.title` when the component mounts. If the column title is updated externally (e.g. via an AI board update that replaces the entire board), the column input will retain its stale local value until the component unmounts and remounts. An AI response that renames a column will not be reflected in the input field.
-
-**Recommendation:** Add a `useEffect` that syncs `localTitle` when `column.title` changes:
-
-```typescript
-useEffect(() => {
-  setLocalTitle(column.title);
-}, [column.title]);
-```
-
----
-
-### `frontend/src/components/KanbanBoard.tsx` — `boardData` falls back to `initialData` silently
-
-```typescript
-const boardData = board ?? initialData;
-```
-
-If the board API fails, the component falls back to `initialData` (the demo data from `default-board.json`) and shows an error banner. Any user edits made while in the fallback state will call `persistBoard`, which will attempt to save to the API. If those saves also fail, the user's changes are lost silently. The error message ("Unable to save changes. They may not persist after refresh.") is accurate but easy to miss.
-
-This is a minor UX issue rather than a bug, but the fallback to demo data can be confusing in a real deployment where the board is empty by design.
-
----
-
-### `frontend/src/lib/kanban.ts` — `createId` uses `Math.random()`
-
-```typescript
+```ts
 const randomPart = Math.random().toString(36).slice(2, 8);
+const timePart = Date.now().toString(36);
+return `${prefix}-${randomPart}${timePart}`;
 ```
 
-`Math.random()` is not cryptographically secure and produces only 6 characters of entropy (about 2 billion combinations). For a single-user MVP the collision probability is negligible, but it is worth noting for future multi-user work. `crypto.randomUUID()` is available in all modern browsers and Node 19+ with no import needed.
+Six base36 chars of `Math.random()` entropy plus a millisecond timestamp is sufficient for a single-user MVP. `crypto.randomUUID()` is supported in all modern browsers and is a one-line replacement with stronger guarantees. Optional cleanup.
 
 ---
 
-### `frontend/src/components/KanbanBoard.tsx` — `cards` prop may contain `undefined` entries
+### `frontend/src/components/ChatSidebar.tsx` — only the latest board snapshot is sent
 
-```typescript
-cards={column.cardIds.map((cardId) => boardData.cards[cardId])}
+```tsx
+body: JSON.stringify({ message, board })
 ```
 
-If `cardIds` contains an ID that does not exist in `cards` (possible if the AI returns a board with inconsistent state), this produces an array with `undefined` entries. `KanbanCard` and `KanbanColumn` have no null guards and would throw a runtime error.
+The frontend sends `board` from its current state. If the user makes a local edit while a chat request is in flight, the AI receives the pre-edit board, returns a board derived from it, and `handleAiBoardUpdate` overwrites the user's edit. There is no "request in flight" lock on board mutations.
 
-**Recommendation:** Filter or validate: `column.cardIds.map((id) => boardData.cards[id]).filter(Boolean)`.
-
----
-
-### `frontend/src/components/ChatSidebar.tsx` — chat scroll does not follow new messages
-
-The messages container uses `overflow-y-auto` but there is no auto-scroll to the latest message when new messages are appended. After a few exchanges the user must scroll manually to see the latest reply.
-
-**Recommendation:** Add a `useEffect` with a `ref` on the messages container to scroll to the bottom after each new message.
+Disabling the textarea while `isSending` prevents new chat sends, but does not prevent the user from dragging a card or renaming a column during that window. For the MVP this is unlikely to be hit, but it can produce surprising lost-update behavior.
 
 ---
 
 ## Tests
 
-### `backend/tests/conftest.py` — module-level side effects in test setup
+### `backend/tests/conftest.py` — module-level env mutation
 
 ```python
+TEST_DEFAULT_DB_PATH = Path(tempfile.gettempdir()) / "pm-backend-tests" / "app.db"
 os.environ["PM_DB_PATH"] = str(TEST_DEFAULT_DB_PATH)
 if TEST_DEFAULT_DB_PATH.exists():
     TEST_DEFAULT_DB_PATH.unlink()
 ```
 
-These run at import time, before any fixtures are set up. Setting environment variables at module level is fragile — the order in which pytest collects and imports test files can affect whether `PM_DB_PATH` is set before or after other modules that read it. Moving this into a session-scoped fixture with `autouse=True` would be safer.
+Setting `PM_DB_PATH` at module import time works because pytest imports `conftest.py` before collecting test modules, but it relies on collection order more than is healthy. Wrapping it in a `pytest_configure` hook or a session-scoped autouse fixture makes the contract explicit.
+
+Most tests pass an explicit `db_path` to `create_app(tmp_path / "app.db")`, so the env var is mostly defensive — but `test_ai_real_api_call` still relies on `tmp_path`, and `test_init_creates_default_board` uses `tmp_path` too. The only consumer of `PM_DB_PATH` would be a test that called `create_app()` with no argument, of which there are none. The env var setup may be redundant.
 
 ---
 
-### `backend/tests/test_board_api.py` — hardcoded assertion on default column count
+### `backend/tests/test_board_api.py` — assertion couples to default column count
 
 ```python
 assert len(payload["columns"]) == 5
 ```
 
-This couples the test to the number of columns in `default-board.json`. If the default data changes, this test breaks for an unrelated reason.
+If `default-board.json` is edited (e.g. to add a "Backlog ideas" column), this test breaks for an unrelated reason. Either pin the default in the test fixture, or assert on the *type* (`isinstance(payload["columns"], list)`) and a per-column assertion.
 
 ---
 
-### Frontend — no unit tests for `NewCardForm` or `KanbanCard` in isolation
+### Frontend — no unit tests for `NewCardForm`, `KanbanCard`, or `KanbanCardPreview`
 
-`KanbanBoard.test.tsx` tests add/delete behaviour indirectly through the board. `NewCardForm` and `KanbanCard` have no dedicated unit tests. This is a minor gap given the simplicity of those components, but worth noting.
+`KanbanBoard.test.tsx` exercises card add/remove through the full board, and `kanban.test.ts` covers the `moveCard` reducer. The leaf components have no isolated coverage. Low priority given their simplicity, but `NewCardForm` has light validation logic (`if (!formState.title.trim()) return;`) that is worth a focused test.
 
 ---
 
 ## Infrastructure
 
-### `Dockerfile` — no explicit platform target
+### `Dockerfile` — no explicit `--platform`
 
-The `FROM node:20-slim` and `FROM python:3.12-slim` stages have no `--platform` argument. On Apple Silicon (arm64) hosts, Docker may pull arm64 images that behave differently from the amd64 images used in CI or production. Adding `--platform=linux/amd64` (or leaving it explicit as `linux/arm64`) avoids ambiguity.
+`FROM node:20-slim` and `FROM python:3.12-slim` resolve per-host. On Apple Silicon the image is arm64; in CI or on x86 hosts it's amd64. The current code has no architecture-specific behavior, but mixed-arch images can subtly break wheel compatibility for native Python deps. Pinning `--platform=linux/amd64` (or building multi-arch with buildx) avoids the ambiguity.
 
 ---
 
-### `docker-compose.yml` — no restart policy
+### `Dockerfile` — runtime stage installs `uv` but does not pin its version
+
+```dockerfile
+RUN pip install --no-cache-dir uv
+```
+
+`uv` is installed at the latest available version. The Python project is pinned via `uv.lock`, but the tool that consumes the lock is not. A future uv release that changes lockfile semantics would break the build silently.
+
+**Recommendation:** Pin `uv==X.Y.Z` (or use the official `astral-sh/uv` image).
+
+---
+
+### `docker-compose.yml` — no `restart` policy
 
 ```yaml
 services:
@@ -238,19 +321,19 @@ services:
       - "8000:8000"
 ```
 
-No `restart` policy is set. If the process crashes, the container stops and requires manual intervention. For a locally-run tool this is fine, but `restart: unless-stopped` is a one-line addition that makes local use more reliable.
+If the process crashes (e.g. unhandled exception during startup), the container stays stopped. A one-line addition (`restart: unless-stopped`) makes local operation more robust.
 
 ---
 
-### `scripts/` — no error handling in start scripts
+### `docker-compose.yml` — `backend/data` bind mount is not declared in the repo
 
-`start-mac.sh` is three lines with `set -euo pipefail`. That is correct, but there is no check that Docker is running before invoking `docker compose`, so the error message on failure is Docker's raw output rather than a friendly hint.
+The compose file bind-mounts `./backend/data`. If the host directory doesn't exist, Docker will create it as a root-owned directory (depending on the daemon) which can cause permission surprises. Worth a `mkdir -p backend/data` in the start scripts, or switching to a named volume.
 
 ---
 
-## Missing items relative to plan
+### `scripts/start-*.sh` — no preflight checks
 
-The plan (Parts 1-10) is fully checked off. No items from the plan appear to be missing from the implementation.
+The start scripts call `docker compose up --build -d` directly. If Docker is not running or the `.env` file is missing, the error surface is Docker's raw output. A one-line check (`docker info >/dev/null 2>&1 || { echo "Docker is not running"; exit 1; }`) and a check for `.env` would make the failure mode clearer for first-time users.
 
 ---
 
@@ -258,17 +341,22 @@ The plan (Parts 1-10) is fully checked off. No items from the plan appear to be 
 
 | Severity | Item |
 |---|---|
-| High | Credentials compiled into the client bundle (security) |
-| High | `_strip_code_fences` strips individual backtick characters, not fence sequences (correctness) |
-| High | `KanbanColumn` local title state does not sync with external updates (bug) |
-| Medium | `board_defaults.py` opens a file at import time across three directory levels (fragility) |
-| Medium | `update_board_state` read-then-write is not atomic (correctness under concurrency) |
-| Medium | AI history grows unbounded (resource leak) |
-| Medium | `cards` prop may contain `undefined` if AI returns inconsistent board (runtime error risk) |
-| Medium | `pydantic` missing from `pyproject.toml` (dependency declaration) |
-| Low | `MODEL_NAME` resolved at import time (test isolation) |
-| Low | `_row_to_board` uses integer indexing after setting `row_factory` (style inconsistency) |
+| High | AI-returned board is persisted without referential validation; can crash the frontend on render |
+| High | `app.state.ai_history` is unbounded — resource/cost leak in long-running processes |
+| High | Credentials compiled into the client bundle; API endpoints are unauthenticated (documented MVP limitation, but blocker for any non-local deploy) |
+| Medium | `board_defaults.py` reads a sibling-package file at import time across three levels |
+| Medium | `update_board_state` read-then-write is not atomic, and `boards.user_id` has no `UNIQUE` constraint |
+| Medium | `KanbanColumn` commits empty/whitespace titles on blur |
+| Medium | `pydantic` not declared in `pyproject.toml` |
+| Medium | Local edits made while a chat request is in flight can be silently overwritten by the AI response |
+| Low | `MODEL_NAME` resolved at import time |
+| Low | `_row_to_board` uses integer indexing despite setting `row_factory` |
+| Low | `_extract_json` fallback can return unbalanced brace slices on chatty model output |
+| Low | `KanbanCard` drag listeners overlap the Remove button (mitigated by 6px activation distance) |
 | Low | No auto-scroll in chat sidebar |
 | Low | `createId` uses `Math.random()` |
-| Low | Hardcoded column count assertion in `test_board_api.py` |
-| Low | Module-level side effects in `conftest.py` |
+| Low | `test_board_api.py` hardcoded column count assertion |
+| Low | `conftest.py` module-level env mutation (also possibly redundant) |
+| Low | Dockerfile pins neither `--platform` nor `uv` version |
+| Low | `docker-compose.yml` has no `restart` policy |
+| Low | Start scripts have no preflight checks for Docker/.env |
