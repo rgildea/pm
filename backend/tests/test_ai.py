@@ -7,7 +7,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.ai import call_openrouter
+from app.ai import _strip_code_fences, call_openrouter
 from app.main import create_app
 
 
@@ -165,6 +165,15 @@ def test_ai_chat_accepts_fenced_json(monkeypatch, tmp_path) -> None:
     response = client.post("/api/ai/chat", json={"message": "Update", "board": board})
     assert response.status_code == 200
     assert response.json()["board"] == updated_board
+
+
+def test_strip_code_fences_preserves_backtick_in_content() -> None:
+    # JSON value that ends with a backtick — the old strip("`") call would
+    # corrupt the content by eating the trailing backtick from the value.
+    inner = json.dumps({"response": "use `code`", "board": None})
+    fenced = f"```json\n{inner}\n```"
+    result = _strip_code_fences(fenced)
+    assert result == inner
 
 
 def test_ai_real_api_call(tmp_path: Path) -> None:

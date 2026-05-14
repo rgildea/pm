@@ -79,7 +79,8 @@ def build_ai_messages(
 def _strip_code_fences(content: str) -> str:
     trimmed = content.strip()
     if trimmed.startswith("```") and trimmed.endswith("```"):
-        trimmed = trimmed.strip("`")
+        trimmed = trimmed[3:]
+        trimmed = trimmed[:-3]
         if trimmed.startswith("json"):
             trimmed = trimmed[4:]
     return trimmed.strip()

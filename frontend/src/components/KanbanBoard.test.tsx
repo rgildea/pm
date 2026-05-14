@@ -1,4 +1,5 @@
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { KanbanColumn } from "@/components/KanbanColumn";
 import { initialData } from "@/lib/kanban";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -106,5 +107,34 @@ describe("KanbanBoard", () => {
       "/api/board",
       expect.objectContaining({ method: "PUT" }),
     );
+  });
+});
+
+describe("KanbanColumn title sync", () => {
+  it("updates the title input when the column prop changes externally", () => {
+    const column = { id: "col-a", title: "Original", cardIds: [] };
+    const { rerender } = render(
+      <KanbanColumn
+        column={column}
+        cards={[]}
+        onRename={() => {}}
+        onAddCard={() => {}}
+        onDeleteCard={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText("Column title")).toHaveValue("Original");
+
+    rerender(
+      <KanbanColumn
+        column={{ ...column, title: "AI Renamed" }}
+        cards={[]}
+        onRename={() => {}}
+        onAddCard={() => {}}
+        onDeleteCard={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText("Column title")).toHaveValue("AI Renamed");
   });
 });
