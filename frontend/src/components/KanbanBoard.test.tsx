@@ -137,4 +137,35 @@ describe("KanbanColumn title sync", () => {
 
     expect(screen.getByLabelText("Column title")).toHaveValue("AI Renamed");
   });
+
+  it("does not clobber an in-progress user edit with an external update", async () => {
+    const column = { id: "col-a", title: "Original", cardIds: [] };
+    const { rerender } = render(
+      <KanbanColumn
+        column={column}
+        cards={[]}
+        onRename={() => {}}
+        onAddCard={() => {}}
+        onDeleteCard={() => {}}
+      />,
+    );
+
+    const input = screen.getByLabelText("Column title");
+    await userEvent.clear(input);
+    await userEvent.type(input, "User typing");
+
+    // External update arrives while the user is mid-edit
+    rerender(
+      <KanbanColumn
+        column={{ ...column, title: "Original" }}
+        cards={[]}
+        onRename={() => {}}
+        onAddCard={() => {}}
+        onDeleteCard={() => {}}
+      />,
+    );
+
+    // The user's in-progress text should be preserved
+    expect(input).toHaveValue("User typing");
+  });
 });

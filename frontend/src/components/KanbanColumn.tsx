@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Card, Column } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
@@ -22,11 +22,16 @@ export const KanbanColumn = ({
   onDeleteCard,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
-  const [localTitle, setLocalTitle] = useState(column.title);
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLocalTitle(column.title);
-  }, [column.title]);
+  const displayTitle = editingTitle ?? column.title;
+
+  const handleBlur = () => {
+    if (editingTitle !== null) {
+      onRename(column.id, editingTitle);
+      setEditingTitle(null);
+    }
+  };
 
   return (
     <section
@@ -46,9 +51,9 @@ export const KanbanColumn = ({
             </span>
           </div>
           <input
-            value={localTitle}
-            onChange={(event) => setLocalTitle(event.target.value)}
-            onBlur={() => onRename(column.id, localTitle)}
+            value={displayTitle}
+            onChange={(event) => setEditingTitle(event.target.value)}
+            onBlur={handleBlur}
             className="mt-3 w-full bg-transparent font-display text-lg font-semibold text-[var(--navy-dark)] outline-none"
             aria-label="Column title"
           />
