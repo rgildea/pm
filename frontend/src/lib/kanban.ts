@@ -7,6 +7,7 @@ export type Card = {
   title: string;
   details: string;
   priority?: Priority;
+  due_date?: string | null;
 };
 
 export type Column = {

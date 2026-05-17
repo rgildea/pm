@@ -9,15 +9,17 @@ import { NewCardForm } from "@/components/NewCardForm";
 type KanbanColumnProps = {
   column: Column;
   cards: Card[];
+  allCardIds?: string[];
   onRename: (columnId: string, title: string) => void;
   onAddCard: (columnId: string, title: string, details: string, priority?: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
-  onEditCard: (cardId: string, title: string, details: string, priority: string) => void;
+  onEditCard: (cardId: string, title: string, details: string, priority: string, dueDate: string | null) => void;
 };
 
 export const KanbanColumn = ({
   column,
   cards,
+  allCardIds,
   onRename,
   onAddCard,
   onDeleteCard,
@@ -27,6 +29,7 @@ export const KanbanColumn = ({
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
   const displayTitle = editingTitle ?? column.title;
+  const sortableIds = allCardIds ?? column.cardIds;
 
   const handleBlur = () => {
     if (editingTitle !== null) {
@@ -64,7 +67,7 @@ export const KanbanColumn = ({
         </div>
       </div>
       <div className="mt-4 flex flex-1 flex-col gap-3">
-        <SortableContext items={column.cardIds} strategy={verticalListSortingStrategy}>
+        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
             <KanbanCard
               key={card.id}

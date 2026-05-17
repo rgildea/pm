@@ -4,9 +4,11 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { BoardSelector } from "@/components/BoardSelector";
+import { FilterBar } from "@/components/FilterBar";
+import type { FilterState } from "@/components/FilterBar";
 import { fetchBoard, persistBoard, sendAiChat } from "@/lib/api";
 import type { BoardSummary } from "@/lib/api";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import { createId, initialData, moveCard, type BoardData, type Priority } from "@/lib/kanban";
 import {
   closestCorners,
   DndContext,
@@ -43,6 +45,7 @@ export const KanbanBoard = ({
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterState>({ search: "", priority: "" });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -52,8 +55,22 @@ export const KanbanBoard = ({
   const boardData = board ?? initialData;
   const cardsById = useMemo(() => boardData.cards, [boardData.cards]);
 
+  const filteredCardIds = useMemo(() => {
+    const search = filter.search.toLowerCase();
+    return new Set(
+      Object.values(boardData.cards)
+        .filter((card) => {
+          if (filter.priority && (card.priority ?? "medium") !== filter.priority) return false;
+          if (search && !card.title.toLowerCase().includes(search) && !card.details.toLowerCase().includes(search)) return false;
+          return true;
+        })
+        .map((card) => card.id)
+    );
+  }, [boardData.cards, filter]);
+
   useEffect(() => {
     let isMounted = true;
+    setFilter({ search: "", priority: "" });
     const loadBoard = async () => {
       setIsLoading(true);
       setError(null);
@@ -134,12 +151,24 @@ export const KanbanBoard = ({
     }));
   };
 
-  const handleEditCard = (cardId: string, title: string, details: string, priority: string) => {
+  const handleEditCard = (
+    cardId: string,
+    title: string,
+    details: string,
+    priority: string,
+    due_date: string | null = null
+  ) => {
     updateBoard((current) => ({
       ...current,
       cards: {
         ...current.cards,
-        [cardId]: { ...current.cards[cardId], title, details, priority: priority as import("@/lib/kanban").Priority },
+        [cardId]: {
+          ...current.cards[cardId],
+          title,
+          details,
+          priority: priority as import("@/lib/kanban").Priority,
+          due_date,
+        },
       },
     }));
   };
@@ -221,6 +250,13 @@ export const KanbanBoard = ({
             onBoardsChange={onBoardsChange}
           />
 
+          <FilterBar
+            filter={filter}
+            onChange={setFilter}
+            totalCards={Object.keys(boardData.cards).length}
+            visibleCards={filteredCardIds.size}
+          />
+
           {error ? (
             <div className="rounded-2xl border border-[color:rgba(117,57,145,0.3)] bg-[color:rgba(117,57,145,0.08)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--secondary-purple)]">
               {error}
@@ -240,7 +276,10 @@ export const KanbanBoard = ({
                 <KanbanColumn
                   key={column.id}
                   column={column}
-                  cards={column.cardIds.map((cardId) => boardData.cards[cardId])}
+                  cards={column.cardIds
+                    .map((cardId) => boardData.cards[cardId])
+                    .filter((card) => filteredCardIds.has(card.id))}
+                  allCardIds={column.cardIds}
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}

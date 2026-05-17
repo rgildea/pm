@@ -9,11 +9,16 @@ class Card(BaseModel):
     title: str
     details: str
     priority: str = "medium"
+    due_date: str | None = None  # ISO date string "YYYY-MM-DD" or None
 
     @model_validator(mode="after")
-    def _check_priority(self) -> "Card":
+    def _check_fields(self) -> "Card":
         if self.priority not in PRIORITY_VALUES:
             raise ValueError(f"priority must be one of {sorted(PRIORITY_VALUES)}")
+        if self.due_date is not None:
+            import re
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", self.due_date):
+                raise ValueError("due_date must be in YYYY-MM-DD format")
         return self
 
 

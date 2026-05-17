@@ -159,3 +159,51 @@ def test_invalid_priority_rejected(app_client) -> None:
 
     resp = client.put(f"/api/boards/{board_id}", json={"board": board_bad_priority}, headers=headers)
     assert resp.status_code == 422
+
+
+def test_card_due_date_field(app_client) -> None:
+    client, headers = app_client
+
+    boards = client.get("/api/boards", headers=headers).json()["boards"]
+    board_id = boards[0]["id"]
+
+    board_with_due = {
+        "columns": [{"id": "col-1", "title": "Todo", "cardIds": ["c-1"]}],
+        "cards": {
+            "c-1": {
+                "id": "c-1",
+                "title": "Deadline task",
+                "details": "",
+                "priority": "high",
+                "due_date": "2025-12-31",
+            },
+        },
+    }
+
+    resp = client.put(f"/api/boards/{board_id}", json={"board": board_with_due}, headers=headers)
+    assert resp.status_code == 200
+    saved = resp.json()["board"]["cards"]["c-1"]
+    assert saved["due_date"] == "2025-12-31"
+
+
+def test_invalid_due_date_format_rejected(app_client) -> None:
+    client, headers = app_client
+
+    boards = client.get("/api/boards", headers=headers).json()["boards"]
+    board_id = boards[0]["id"]
+
+    board_bad_date = {
+        "columns": [{"id": "col-1", "title": "Todo", "cardIds": ["c-1"]}],
+        "cards": {
+            "c-1": {
+                "id": "c-1",
+                "title": "Task",
+                "details": "",
+                "priority": "medium",
+                "due_date": "not-a-date",
+            },
+        },
+    }
+
+    resp = client.put(f"/api/boards/{board_id}", json={"board": board_bad_date}, headers=headers)
+    assert resp.status_code == 422
