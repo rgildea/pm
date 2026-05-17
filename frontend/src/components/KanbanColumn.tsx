@@ -28,7 +28,9 @@ export const KanbanColumn = ({
 
   const handleBlur = () => {
     if (editingTitle !== null) {
-      onRename(column.id, editingTitle);
+      if (editingTitle.trim()) {
+        onRename(column.id, editingTitle);
+      }
       setEditingTitle(null);
     }
   };

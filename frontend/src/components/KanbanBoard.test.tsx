@@ -138,6 +138,24 @@ describe("KanbanColumn title sync", () => {
     expect(screen.getByLabelText("Column title")).toHaveValue("AI Renamed");
   });
 
+  it("does not rename a column to a blank title on blur", async () => {
+    const onRename = vi.fn();
+    const column = { id: "col-a", title: "Original", cardIds: [] };
+    render(
+      <KanbanColumn
+        column={column}
+        cards={[]}
+        onRename={onRename}
+        onAddCard={() => {}}
+        onDeleteCard={() => {}}
+      />,
+    );
+    const input = screen.getByLabelText("Column title");
+    await userEvent.clear(input);
+    fireEvent.blur(input);
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
   it("does not clobber an in-progress user edit with an external update", async () => {
     const column = { id: "col-a", title: "Original", cardIds: [] };
     const { rerender } = render(
