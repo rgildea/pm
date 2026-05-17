@@ -6,14 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Kanban project management app. Key features:
 
-- User sign-in
-- Kanban board with fixed columns that can be renamed
-- Cards that can be moved with drag-and-drop and edited
-- AI chat sidebar that can create, edit, and move cards
+- Real user auth: login, registration, persistent sessions (Bearer tokens in localStorage)
+- Multiple Kanban boards per user — create, rename, delete, switch boards
+- Cards with drag-and-drop, inline editing, priority (low/medium/high), and due dates
+- Search and filter cards by text or priority within a board
+- AI chat sidebar (per board) that can create, edit, and move cards
 
-**MVP limitations:** Single user (hardcoded `user` / `password`), one board per user, runs locally in Docker. The database schema supports multiple users for future expansion.
+**Auth model:** Server-side auth via `/api/auth/*` endpoints. Passwords hashed with PBKDF2-SHA256 + salt. Sessions stored in SQLite with 30-day expiry. Bearer token sent in `Authorization` header.
 
-Next.js frontend statically exported and served by a FastAPI backend at `/`. Auth is purely client-side (React state — no server session). Board state is persisted in SQLite. AI chat uses OpenRouter with in-memory conversation history (resets on restart).
+Next.js frontend statically exported and served by a FastAPI backend at `/`. Board state is persisted in SQLite. AI chat uses OpenRouter with per-user in-memory conversation history (resets on restart).
 
 ## Running
 
@@ -48,7 +49,9 @@ npm run test:e2e                 # Playwright (requires running app)
 
 ### Request flow
 
-Browser → FastAPI (`/api/*`) or static files (`/`) → SQLite for board, OpenRouter for AI.
+Browser → FastAPI (`/api/*`) or static files (`/`) → SQLite for board/auth, OpenRouter for AI.
+
+All `/api/board*` endpoints require `Authorization: Bearer <token>`.
 
 ### Docker build
 
@@ -56,29 +59,55 @@ Browser → FastAPI (`/api/*`) or static files (`/`) → SQLite for board, OpenR
 
 ### Backend (`backend/`)
 
-- `app/main.py`: `create_app(db_path)` factory wires all routes. The `db_path` parameter lets tests inject a temp DB. `app.state.ai_history` holds the per-process AI conversation.
-- `app/db.py`: SQLite helpers. `init_db` creates tables and seeds the single `"user"` row on startup. The `PM_DB_PATH` env var overrides the default path.
+- `app/main.py`: `create_app(db_path)` factory wires all routes. Auth middleware via FastAPI `Depends`. Per-user AI history in `app.state.ai_history`.
+- `app/auth.py`: Password hashing (PBKDF2-SHA256), verification, token generation.
+- `app/db.py`: SQLite helpers. `init_db` creates tables (users, sessions, boards) and seeds the default `user/password` account. The `PM_DB_PATH` env var overrides the default path.
 - `app/ai.py`: Calls OpenRouter (`call_openrouter_messages`), builds prompts with full board JSON + history, parses structured JSON responses.
-- `app/schemas.py`: `BoardState` shape (`columns: list[dict]`, `cards: dict[str, dict]`). `AIChatResponse` carries `response: str` and optional `board: BoardState | None`.
-- `backend/tests/conftest.py`: Sets `PM_DB_PATH` to a temp dir before any imports so tests never touch the production DB.
+- `app/schemas.py`: `BoardState` shape with `Card` (id, title, details, priority, due_date). Pydantic validation for referential integrity, priority values, and due_date format.
+- `backend/tests/conftest.py`: Sets `PM_DB_PATH` to a temp dir before any imports so tests never touch the production DB. `login()` helper and `app_client` fixture provide authenticated test clients.
+
+### API endpoints
+
+**Auth:**
+- `POST /api/auth/register` — create account, returns token
+- `POST /api/auth/login` — returns token
+- `POST /api/auth/logout` — invalidates token
+- `GET /api/auth/me` — returns current user info (auth required)
+
+**Boards (all auth required):**
+- `GET /api/boards` — list user's boards
+- `POST /api/boards` — create board
+- `GET /api/boards/{id}` — get board state + title
+- `PUT /api/boards/{id}` — replace board state
+- `PATCH /api/boards/{id}` — rename board
+- `DELETE /api/boards/{id}` — delete board (cannot delete last board)
+- `POST /api/boards/{id}/ai/chat` — AI chat for this board
+
+**Legacy (auth required, uses first board):**
+- `GET /api/board`, `PUT /api/board`, `POST /api/ai/chat`
 
 ### Frontend (`frontend/src/`)
 
-- `app/page.tsx`: Login gate — renders `LoginScreen` or `KanbanBoard` based on React state.
-- `components/KanbanBoard.tsx`: Owns all board state. Fetches from `/api/board` on mount, calls `persistBoard` (PUT `/api/board`) on every mutation, and accepts AI board updates via `handleAiBoardUpdate`.
-- `components/ChatSidebar.tsx`: Posts to `/api/ai/chat` with the current `board` snapshot and calls `onBoardUpdate` when the response includes a board.
-- `lib/kanban.ts`: `BoardData` type (`columns: Column[], cards: Record<string, Card>`), `moveCard` logic, `createId` utility.
+- `app/page.tsx`: Auth flow — checks localStorage token, renders login/register or board UI.
+- `lib/api.ts`: API client — handles auth tokens, all fetch calls, `ApiError` class.
+- `components/KanbanBoard.tsx`: Owns board state. Multi-board aware (takes `boards`, `activeBoardId` as props). Includes filter state and `handleEditCard`.
+- `components/BoardSelector.tsx`: Board switcher with create/rename (double-click)/delete.
+- `components/FilterBar.tsx`: Search by text + filter by priority.
+- `components/ChatSidebar.tsx`: Per-board AI chat using `/api/boards/{id}/ai/chat`.
+- `components/KanbanCard.tsx`: Draggable card with inline edit mode, priority badge, due date badge with overdue indicator.
+- `components/NewCardForm.tsx`: Inline form to add cards with title, details, priority.
+- `lib/kanban.ts`: `BoardData`, `Card`, `Column`, `Priority` types; `moveCard` logic; `createId` utility.
 
 ### Board data shape
 
 ```typescript
 BoardData {
   columns: [{ id, title, cardIds: string[] }]
-  cards:   { [cardId]: { id, title, details } }
+  cards:   { [cardId]: { id, title, details, priority, due_date } }
 }
 ```
 
-The columns array defines order; `cardIds` within each column defines card order.
+Cards have: `priority: "low" | "medium" | "high"` (default "medium") and `due_date: "YYYY-MM-DD" | null`.
 
 ## Environment variables
 
