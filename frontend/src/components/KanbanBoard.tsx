@@ -20,7 +20,12 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 
 type KanbanBoardProps = {
@@ -43,6 +48,7 @@ export const KanbanBoard = ({
   const [board, setBoard] = useState<BoardData | null>(null);
   const [boardTitle, setBoardTitle] = useState<string>("");
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterState>({ search: "", priority: "" });
@@ -125,16 +131,40 @@ export const KanbanBoard = ({
   };
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveCardId(event.active.id as string);
+    const id = event.active.id as string;
+    if (boardData.columns.some((col) => col.id === id)) {
+      setActiveColumnId(id);
+    } else {
+      setActiveCardId(id);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
+    setActiveColumnId(null);
     if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Column reorder
+    if (boardData.columns.some((col) => col.id === activeId)) {
+      const oldIndex = boardData.columns.findIndex((col) => col.id === activeId);
+      const newIndex = boardData.columns.findIndex((col) => col.id === overId);
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        updateBoard((current) => ({
+          ...current,
+          columns: arrayMove(current.columns, oldIndex, newIndex),
+        }));
+      }
+      return;
+    }
+
+    // Card move
     updateBoard((current) => ({
       ...current,
-      columns: moveCard(current.columns, active.id as string, over.id as string),
+      columns: moveCard(current.columns, activeId, overId),
     }));
   };
 
@@ -319,33 +349,44 @@ export const KanbanBoard = ({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <section
-              className="grid gap-6"
-              style={{
-                gridTemplateColumns: `repeat(${boardData.columns.length}, minmax(0, 1fr)) auto`,
-              }}
+            <SortableContext
+              items={boardData.columns.map((col) => col.id)}
+              strategy={horizontalListSortingStrategy}
             >
-              {boardData.columns.map((column) => (
-                <KanbanColumn
-                  key={column.id}
-                  column={column}
-                  cards={column.cardIds
-                    .map((cardId) => boardData.cards[cardId])
-                    .filter((card) => filteredCardIds.has(card.id))}
-                  allCardIds={column.cardIds}
-                  onRename={handleRenameColumn}
-                  onAddCard={handleAddCard}
-                  onDeleteCard={handleDeleteCard}
-                  onEditCard={handleEditCard}
-                  onDeleteColumn={boardData.columns.length > 1 ? handleDeleteColumn : undefined}
-                />
-              ))}
-              <AddColumnButton onAdd={handleAddColumn} />
-            </section>
+              <section
+                className="grid gap-6"
+                style={{
+                  gridTemplateColumns: `repeat(${boardData.columns.length}, minmax(0, 1fr)) auto`,
+                }}
+              >
+                {boardData.columns.map((column) => (
+                  <KanbanColumn
+                    key={column.id}
+                    column={column}
+                    cards={column.cardIds
+                      .map((cardId) => boardData.cards[cardId])
+                      .filter((card) => filteredCardIds.has(card.id))}
+                    allCardIds={column.cardIds}
+                    onRename={handleRenameColumn}
+                    onAddCard={handleAddCard}
+                    onDeleteCard={handleDeleteCard}
+                    onEditCard={handleEditCard}
+                    onDeleteColumn={boardData.columns.length > 1 ? handleDeleteColumn : undefined}
+                  />
+                ))}
+                <AddColumnButton onAdd={handleAddColumn} />
+              </section>
+            </SortableContext>
             <DragOverlay>
               {activeCard ? (
                 <div className="w-[260px]">
                   <KanbanCardPreview card={activeCard} />
+                </div>
+              ) : activeColumnId ? (
+                <div className="w-[260px] rounded-3xl border border-[var(--primary-blue)] bg-white/80 px-4 py-4 shadow-[0_18px_32px_rgba(3,33,71,0.16)]">
+                  <p className="font-display text-lg font-semibold text-[var(--navy-dark)]">
+                    {boardData.columns.find((col) => col.id === activeColumnId)?.title}
+                  </p>
                 </div>
               ) : null}
             </DragOverlay>

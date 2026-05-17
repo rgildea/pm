@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
 import type { Card, Column } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
@@ -27,8 +28,26 @@ export const KanbanColumn = ({
   onEditCard,
   onDeleteColumn,
 }: KanbanColumnProps) => {
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id });
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const setNodeRef = (node: HTMLElement | null) => {
+    setDropRef(node);
+    setSortRef(node);
+  };
 
   const displayTitle = editingTitle ?? column.title;
   const sortableIds = allCardIds ?? column.cardIds;
@@ -45,16 +64,23 @@ export const KanbanColumn = ({
   return (
     <section
       ref={setNodeRef}
+      style={style}
       className={clsx(
         "flex min-h-[520px] flex-col rounded-3xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow)] transition",
-        isOver && "ring-2 ring-[var(--accent-yellow)]"
+        isOver && "ring-2 ring-[var(--accent-yellow)]",
+        isDragging && "opacity-40"
       )}
       data-testid={`column-${column.id}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
+            <div
+              className="h-2 w-10 cursor-grab rounded-full bg-[var(--accent-yellow)] active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+              title="Drag to reorder column"
+            />
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
               {cards.length} {cards.length === 1 ? "card" : "cards"}
             </span>
