@@ -79,8 +79,9 @@ Loaded from `.env` at the project root (both at runtime and in tests). Required:
 
 - No over-engineering. No unnecessary defensive programming. Keep it simple.
 - No emojis anywhere.
-- When hitting issues, identify root cause with evidence before fixing — do not guess.
+- Identify root cause with evidence before fixing issues — do not guess.
 - Use latest idiomatic approaches for both Python and TypeScript.
+- work incrementally with small steps. Validate each increment.
 
 ## Color scheme (CSS variables in `frontend/src/app/globals.css`)
 
