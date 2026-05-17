@@ -137,6 +137,28 @@ export const KanbanBoard = ({
     }));
   };
 
+  const handleAddColumn = (title: string) => {
+    const id = createId("col");
+    updateBoard((current) => ({
+      ...current,
+      columns: [...current.columns, { id, title, cardIds: [] }],
+    }));
+  };
+
+  const handleDeleteColumn = (columnId: string) => {
+    updateBoard((current) => {
+      const col = current.columns.find((c) => c.id === columnId);
+      if (!col) return current;
+      const cardIds = new Set(col.cardIds);
+      return {
+        columns: current.columns.filter((c) => c.id !== columnId),
+        cards: Object.fromEntries(
+          Object.entries(current.cards).filter(([id]) => !cardIds.has(id))
+        ),
+      };
+    });
+  };
+
   const handleAddCard = (columnId: string, title: string, details: string, priority = "medium") => {
     const id = createId("card");
     updateBoard((current) => ({
@@ -271,7 +293,12 @@ export const KanbanBoard = ({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <section className="grid gap-6 lg:grid-cols-5">
+            <section
+              className="grid gap-6"
+              style={{
+                gridTemplateColumns: `repeat(${boardData.columns.length}, minmax(0, 1fr)) auto`,
+              }}
+            >
               {boardData.columns.map((column) => (
                 <KanbanColumn
                   key={column.id}
@@ -284,8 +311,10 @@ export const KanbanBoard = ({
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
                   onEditCard={handleEditCard}
+                  onDeleteColumn={boardData.columns.length > 1 ? handleDeleteColumn : undefined}
                 />
               ))}
+              <AddColumnButton onAdd={handleAddColumn} />
             </section>
             <DragOverlay>
               {activeCard ? (
@@ -304,5 +333,62 @@ export const KanbanBoard = ({
         </div>
       </main>
     </div>
+  );
+};
+
+const AddColumnButton = ({ onAdd }: { onAdd: (title: string) => void }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [title, setTitle] = useState("");
+
+  const handleSave = () => {
+    const t = title.trim();
+    if (t) onAdd(t);
+    setTitle("");
+    setIsAdding(false);
+  };
+
+  if (isAdding) {
+    return (
+      <div className="flex w-48 flex-col gap-2 rounded-3xl border border-[var(--primary-blue)] bg-white/80 p-4 shadow-[var(--shadow)]">
+        <input
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") { setIsAdding(false); setTitle(""); }
+          }}
+          placeholder="Column title"
+          className="w-full bg-transparent text-sm font-semibold text-[var(--navy-dark)] outline-none"
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="rounded-lg bg-[var(--primary-blue)] px-3 py-1 text-xs font-semibold text-white"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsAdding(false); setTitle(""); }}
+            className="rounded-lg border border-[var(--stroke)] px-2 py-1 text-xs text-[var(--gray-text)]"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setIsAdding(true)}
+      aria-label="Add column"
+      className="flex w-12 flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--stroke)] text-[var(--gray-text)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+    >
+      <span className="text-2xl leading-none">+</span>
+    </button>
   );
 };

@@ -14,6 +14,7 @@ type KanbanColumnProps = {
   onAddCard: (columnId: string, title: string, details: string, priority?: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
   onEditCard: (cardId: string, title: string, details: string, priority: string, dueDate: string | null) => void;
+  onDeleteColumn?: (columnId: string) => void;
 };
 
 export const KanbanColumn = ({
@@ -24,6 +25,7 @@ export const KanbanColumn = ({
   onAddCard,
   onDeleteCard,
   onEditCard,
+  onDeleteColumn,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
@@ -49,8 +51,8 @@ export const KanbanColumn = ({
       )}
       data-testid={`column-${column.id}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="w-full">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
@@ -65,6 +67,19 @@ export const KanbanColumn = ({
             aria-label="Column title"
           />
         </div>
+        {onDeleteColumn && (
+          <button
+            type="button"
+            onClick={() => onDeleteColumn(column.id)}
+            className="mt-1 flex-shrink-0 rounded-full p-1 text-[var(--gray-text)] hover:text-red-500"
+            aria-label={`Delete ${column.title} column`}
+            title="Delete column (removes all cards)"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M9.5 3.5L6 7 2.5 3.5 1.5 4.5 5 8 1.5 11.5l1 1L6 9l3.5 3.5 1-1L7 8l3.5-3.5z" />
+            </svg>
+          </button>
+        )}
       </div>
       <div className="mt-4 flex flex-1 flex-col gap-3">
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>

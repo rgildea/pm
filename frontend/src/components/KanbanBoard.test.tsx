@@ -128,6 +128,28 @@ describe("KanbanBoard", () => {
   });
 });
 
+  it("adds a new column", async () => {
+    render(<KanbanBoard {...defaultProps} />);
+    await screen.findAllByTestId(/column-/i);
+
+    const addColButton = screen.getByRole("button", { name: /add column/i });
+    await userEvent.click(addColButton);
+
+    const titleInput = screen.getByPlaceholderText(/column title/i);
+    await userEvent.type(titleInput, "New Stage");
+    await userEvent.click(screen.getByRole("button", { name: /^Add$/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/boards/${TEST_BOARD_ID}`,
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining("New Stage"),
+        }),
+      );
+    });
+  });
+
 describe("KanbanColumn title sync", () => {
   it("updates the title input when the column prop changes externally", () => {
     const column = { id: "col-a", title: "Original", cardIds: [] };
