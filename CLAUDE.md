@@ -4,7 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-A Kanban project management app: Next.js frontend statically exported and served by a FastAPI backend at `/`. Auth is purely client-side (hardcoded `user` / `password` in React state — no server session). Board state is persisted in SQLite. AI chat uses OpenRouter with in-memory conversation history (resets on restart).
+A Kanban project management app. Key features:
+
+- User sign-in
+- Kanban board with fixed columns that can be renamed
+- Cards that can be moved with drag-and-drop and edited
+- AI chat sidebar that can create, edit, and move cards
+
+**MVP limitations:** Single user (hardcoded `user` / `password`), one board per user, runs locally in Docker. The database schema supports multiple users for future expansion.
+
+Next.js frontend statically exported and served by a FastAPI backend at `/`. Auth is purely client-side (React state — no server session). Board state is persisted in SQLite. AI chat uses OpenRouter with in-memory conversation history (resets on restart).
 
 ## Running
 
@@ -77,11 +86,16 @@ Loaded from `.env` at the project root (both at runtime and in tests). Required:
 
 ## Coding standards
 
-- No over-engineering. No unnecessary defensive programming. Keep it simple.
-- No emojis anywhere.
-- Identify root cause with evidence before fixing issues — do not guess.
+- No over-engineering. No unnecessary defensive programming. No extra features. Keep it simple.
+- No emojis anywhere. Keep READMEs minimal.
+- Identify root cause with evidence before fixing — do not guess.
 - Use latest idiomatic approaches for both Python and TypeScript.
-- work incrementally with small steps. Validate each increment.
+- Work incrementally with small steps. Validate each increment.
+
+## Docs
+
+- `docs/DATABASE.md` — database model rationale (JSON blob per board, users table, schema approach)
+- `docs/PLAN.md` — phased execution plan with checklists; useful for understanding what has been built and why
 
 ## Color scheme (CSS variables in `frontend/src/app/globals.css`)
 

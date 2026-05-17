@@ -1,1 +1,1 @@
-This folder will contain start and stop scripts for Mac, PC and Linux
+@CLAUDE.md
