@@ -113,3 +113,21 @@ def test_logout_invalidates_token(tmp_path: Path) -> None:
 
     # Token no longer works
     assert client.get("/api/auth/me", headers=auth).status_code == 401
+
+
+def test_register_invalid_username_chars(tmp_path: Path) -> None:
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+
+    resp = client.post("/api/auth/register", json={"username": "bad user!", "password": "validpass"})
+    assert resp.status_code == 422
+
+
+def test_register_username_too_long(tmp_path: Path) -> None:
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+
+    resp = client.post("/api/auth/register", json={"username": "a" * 33, "password": "validpass"})
+    assert resp.status_code == 422

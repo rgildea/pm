@@ -86,11 +86,18 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/auth/register")
     def register(payload: RegisterRequest) -> JSONResponse:
+        import re as _re
         username = payload.username.strip()
         if not username or len(username) < 2:
             raise HTTPException(status_code=422, detail="Username must be at least 2 characters")
+        if len(username) > 32:
+            raise HTTPException(status_code=422, detail="Username must be at most 32 characters")
+        if not _re.match(r"^[a-zA-Z0-9_-]+$", username):
+            raise HTTPException(status_code=422, detail="Username may only contain letters, numbers, _ and -")
         if len(payload.password) < 6:
             raise HTTPException(status_code=422, detail="Password must be at least 6 characters")
+        if len(payload.password) > 128:
+            raise HTTPException(status_code=422, detail="Password too long")
         if get_user_by_username(db_path, username) is not None:
             raise HTTPException(status_code=409, detail="Username already taken")
         password_hash = hash_password(payload.password)

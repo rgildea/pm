@@ -55,6 +55,16 @@ export const KanbanBoard = ({
   const boardData = board ?? initialData;
   const cardsById = useMemo(() => boardData.cards, [boardData.cards]);
 
+  const boardStats = useMemo(() => {
+    const cards = Object.values(boardData.cards);
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      total: cards.length,
+      high: cards.filter((c) => (c.priority ?? "medium") === "high").length,
+      overdue: cards.filter((c) => c.due_date && c.due_date < today).length,
+    };
+  }, [boardData.cards]);
+
   const filteredCardIds = useMemo(() => {
     const search = filter.search.toLowerCase();
     return new Set(
@@ -271,6 +281,22 @@ export const KanbanBoard = ({
             onSelect={onActiveBoardChange}
             onBoardsChange={onBoardsChange}
           />
+
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            <span className="text-[var(--gray-text)]">
+              <span className="font-semibold text-[var(--navy-dark)]">{boardStats.total}</span> cards
+            </span>
+            {boardStats.high > 0 && (
+              <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 font-semibold text-red-700">
+                {boardStats.high} high priority
+              </span>
+            )}
+            {boardStats.overdue > 0 && (
+              <span className="rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 font-semibold text-red-800">
+                {boardStats.overdue} overdue
+              </span>
+            )}
+          </div>
 
           <FilterBar
             filter={filter}
