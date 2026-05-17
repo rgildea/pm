@@ -188,7 +188,7 @@ The frontend tests are good: login flow (valid, invalid, logout), board mutation
 - `moveCard` with an unknown `activeId` or `overId` (should return columns unchanged).
 - `moveCard` when the active card is already at the target position (no-op case).
 - `NewCardForm` submission with blank title (should not call `onAdd`).
-- `KanbanColumn` blur with empty title (the bug noted above has no regression test).
+- ~~`KanbanColumn` blur with empty title (the bug noted above has no regression test).~~
 
 ---
 
@@ -197,8 +197,8 @@ The frontend tests are good: login flow (valid, invalid, logout), board mutation
 The codebase is in good shape. Most issues are minor quality improvements rather than functional defects. The one genuine bug is the blank column title on blur; the import-time path construction in `board_defaults.py` is the highest-reliability risk if the project structure ever changes. Everything else is polish.
 
 Priority order for fixes:
-1. Blank column title allowed on blur (`KanbanColumn.tsx`)
-2. `board_defaults.py` path construction + import-time open
+1. ~~Blank column title allowed on blur (`KanbanColumn.tsx`)~~
+2. ~~`board_defaults.py` path construction + import-time open~~
 3. `useMemo` removal in `KanbanBoard.tsx`
 4. `update_board_state` TOCTOU (only matters when multi-user is added)
 5. `createId` → `crypto.randomUUID()`
