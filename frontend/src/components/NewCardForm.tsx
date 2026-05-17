@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
+import type { Priority } from "@/lib/kanban";
 
-const initialFormState = { title: "", details: "" };
+const initialFormState = { title: "", details: "", priority: "medium" as Priority };
 
 type NewCardFormProps = {
-  onAdd: (title: string, details: string) => void;
+  onAdd: (title: string, details: string, priority: string) => void;
 };
 
 export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
@@ -12,10 +13,8 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formState.title.trim()) {
-      return;
-    }
-    onAdd(formState.title.trim(), formState.details.trim());
+    if (!formState.title.trim()) return;
+    onAdd(formState.title.trim(), formState.details.trim(), formState.priority);
     setFormState(initialFormState);
     setIsOpen(false);
   };
@@ -25,6 +24,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
       {isOpen ? (
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
+            autoFocus
             value={formState.title}
             onChange={(event) =>
               setFormState((prev) => ({ ...prev, title: event.target.value }))
@@ -42,6 +42,18 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             rows={3}
             className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />
+          <select
+            value={formState.priority}
+            onChange={(event) =>
+              setFormState((prev) => ({ ...prev, priority: event.target.value as Priority }))
+            }
+            className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-xs font-semibold text-[var(--navy-dark)] focus:outline-none"
+            aria-label="Card priority"
+          >
+            <option value="low">Low priority</option>
+            <option value="medium">Medium priority</option>
+            <option value="high">High priority</option>
+          </select>
           <div className="flex items-center gap-2">
             <button
               type="submit"
@@ -51,10 +63,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setIsOpen(false);
-                setFormState(initialFormState);
-              }}
+              onClick={() => { setIsOpen(false); setFormState(initialFormState); }}
               className="rounded-full border border-[var(--stroke)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
             >
               Cancel

@@ -10,8 +10,9 @@ type KanbanColumnProps = {
   column: Column;
   cards: Card[];
   onRename: (columnId: string, title: string) => void;
-  onAddCard: (columnId: string, title: string, details: string) => void;
+  onAddCard: (columnId: string, title: string, details: string, priority?: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
+  onEditCard: (cardId: string, title: string, details: string, priority: string) => void;
 };
 
 export const KanbanColumn = ({
@@ -20,6 +21,7 @@ export const KanbanColumn = ({
   onRename,
   onAddCard,
   onDeleteCard,
+  onEditCard,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export const KanbanColumn = ({
           <div className="flex items-center gap-3">
             <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-              {cards.length} cards
+              {cards.length} {cards.length === 1 ? "card" : "cards"}
             </span>
           </div>
           <input
@@ -68,6 +70,7 @@ export const KanbanColumn = ({
               key={card.id}
               card={card}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
+              onEdit={onEditCard}
             />
           ))}
         </SortableContext>
@@ -78,7 +81,7 @@ export const KanbanColumn = ({
         )}
       </div>
       <NewCardForm
-        onAdd={(title, details) => onAddCard(column.id, title, details)}
+        onAdd={(title, details, priority) => onAddCard(column.id, title, details, priority)}
       />
     </section>
   );

@@ -1,10 +1,20 @@
 from pydantic import BaseModel, model_validator
 
 
+PRIORITY_VALUES = {"low", "medium", "high"}
+
+
 class Card(BaseModel):
     id: str
     title: str
     details: str
+    priority: str = "medium"
+
+    @model_validator(mode="after")
+    def _check_priority(self) -> "Card":
+        if self.priority not in PRIORITY_VALUES:
+            raise ValueError(f"priority must be one of {sorted(PRIORITY_VALUES)}")
+        return self
 
 
 class Column(BaseModel):

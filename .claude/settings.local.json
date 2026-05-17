@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/test-backend.sh)",
+      "Bash(npm run *)",
+      "Bash(bash /Users/ryan/projects/pm/scripts/test-backend.sh)",
+      "Bash(git *)"
+    ]
+  }
+}

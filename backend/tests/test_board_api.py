@@ -123,3 +123,39 @@ def test_rename_board_empty_title(app_client) -> None:
     board_id = boards[0]["id"]
     resp = client.patch(f"/api/boards/{board_id}", json={"title": ""}, headers=headers)
     assert resp.status_code == 422
+
+
+def test_card_priority_field(app_client) -> None:
+    client, headers = app_client
+
+    boards = client.get("/api/boards", headers=headers).json()["boards"]
+    board_id = boards[0]["id"]
+
+    board_with_priority = {
+        "columns": [{"id": "col-1", "title": "Todo", "cardIds": ["c-1"]}],
+        "cards": {
+            "c-1": {"id": "c-1", "title": "High priority task", "details": "Urgent", "priority": "high"},
+        },
+    }
+
+    resp = client.put(f"/api/boards/{board_id}", json={"board": board_with_priority}, headers=headers)
+    assert resp.status_code == 200
+    saved_card = resp.json()["board"]["cards"]["c-1"]
+    assert saved_card["priority"] == "high"
+
+
+def test_invalid_priority_rejected(app_client) -> None:
+    client, headers = app_client
+
+    boards = client.get("/api/boards", headers=headers).json()["boards"]
+    board_id = boards[0]["id"]
+
+    board_bad_priority = {
+        "columns": [{"id": "col-1", "title": "Todo", "cardIds": ["c-1"]}],
+        "cards": {
+            "c-1": {"id": "c-1", "title": "Task", "details": "", "priority": "urgent"},
+        },
+    }
+
+    resp = client.put(f"/api/boards/{board_id}", json={"board": board_bad_priority}, headers=headers)
+    assert resp.status_code == 422

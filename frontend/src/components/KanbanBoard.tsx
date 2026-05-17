@@ -120,14 +120,27 @@ export const KanbanBoard = ({
     }));
   };
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
+  const handleAddCard = (columnId: string, title: string, details: string, priority = "medium") => {
     const id = createId("card");
     updateBoard((current) => ({
       ...current,
-      cards: { ...current.cards, [id]: { id, title, details: details || "No details yet." } },
+      cards: {
+        ...current.cards,
+        [id]: { id, title, details: details || "No details yet.", priority: priority as import("@/lib/kanban").Priority },
+      },
       columns: current.columns.map((col) =>
         col.id === columnId ? { ...col, cardIds: [...col.cardIds, id] } : col,
       ),
+    }));
+  };
+
+  const handleEditCard = (cardId: string, title: string, details: string, priority: string) => {
+    updateBoard((current) => ({
+      ...current,
+      cards: {
+        ...current.cards,
+        [cardId]: { ...current.cards[cardId], title, details, priority: priority as import("@/lib/kanban").Priority },
+      },
     }));
   };
 
@@ -231,6 +244,7 @@ export const KanbanBoard = ({
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
+                  onEditCard={handleEditCard}
                 />
               ))}
             </section>

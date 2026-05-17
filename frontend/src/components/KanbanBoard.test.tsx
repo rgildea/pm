@@ -137,7 +137,7 @@ describe("KanbanColumn title sync", () => {
         cards={[]}
         onRename={() => {}}
         onAddCard={() => {}}
-        onDeleteCard={() => {}}
+        onDeleteCard={() => {}} onEditCard={() => {}}
       />,
     );
 
@@ -149,7 +149,7 @@ describe("KanbanColumn title sync", () => {
         cards={[]}
         onRename={() => {}}
         onAddCard={() => {}}
-        onDeleteCard={() => {}}
+        onDeleteCard={() => {}} onEditCard={() => {}}
       />,
     );
 
@@ -165,7 +165,7 @@ describe("KanbanColumn title sync", () => {
         cards={[]}
         onRename={onRename}
         onAddCard={() => {}}
-        onDeleteCard={() => {}}
+        onDeleteCard={() => {}} onEditCard={() => {}}
       />,
     );
     const input = screen.getByLabelText("Column title");
@@ -182,7 +182,7 @@ describe("KanbanColumn title sync", () => {
         cards={[]}
         onRename={() => {}}
         onAddCard={() => {}}
-        onDeleteCard={() => {}}
+        onDeleteCard={() => {}} onEditCard={() => {}}
       />,
     );
 
@@ -196,7 +196,7 @@ describe("KanbanColumn title sync", () => {
         cards={[]}
         onRename={() => {}}
         onAddCard={() => {}}
-        onDeleteCard={() => {}}
+        onDeleteCard={() => {}} onEditCard={() => {}}
       />,
     );
 

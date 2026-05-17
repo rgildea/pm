@@ -1,9 +1,12 @@
 import defaultBoard from "../../default-board.json";
 
+export type Priority = "low" | "medium" | "high";
+
 export type Card = {
   id: string;
   title: string;
   details: string;
+  priority?: Priority;
 };
 
 export type Column = {
