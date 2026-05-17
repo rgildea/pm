@@ -1,25 +1,47 @@
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { initialData } from "@/lib/kanban";
+import type { BoardSummary } from "@/lib/api";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 
+const TEST_BOARD_ID = "test-board-id";
+
+const defaultBoards: BoardSummary[] = [
+  {
+    id: TEST_BOARD_ID,
+    title: "Test Board",
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  },
+];
+
+const defaultProps = {
+  onLogout: () => {},
+  userName: "user",
+  boards: defaultBoards,
+  activeBoardId: TEST_BOARD_ID,
+  onBoardsChange: () => {},
+  onActiveBoardChange: () => {},
+};
+
 const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
 
 const mockFetch = () => {
-  const fetchMock = vi.fn().mockImplementation((_, init) => {
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
-    if (method === "GET") {
+
+    if (url === `/api/boards/${TEST_BOARD_ID}` && method === "GET") {
       return Promise.resolve(
-        new Response(JSON.stringify({ board: initialData }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
+        new Response(
+          JSON.stringify({ board: initialData, title: "Test Board", id: TEST_BOARD_ID }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
       );
     }
 
-    if (method === "PUT") {
+    if (url === `/api/boards/${TEST_BOARD_ID}` && method === "PUT") {
       const body = init?.body ? JSON.parse(init.body.toString()) : {};
       return Promise.resolve(
         new Response(JSON.stringify({ board: body.board ?? initialData }), {
@@ -48,12 +70,12 @@ afterEach(() => {
 
 describe("KanbanBoard", () => {
   it("renders five columns", async () => {
-    render(<KanbanBoard onLogout={() => {}} userName="user" />);
+    render(<KanbanBoard {...defaultProps} />);
     expect(await screen.findAllByTestId(/column-/i)).toHaveLength(5);
   });
 
   it("renames a column", async () => {
-    render(<KanbanBoard onLogout={() => {}} userName="user" />);
+    render(<KanbanBoard {...defaultProps} />);
     await screen.findAllByTestId(/column-/i);
     const column = getFirstColumn();
     const input = within(column).getByLabelText("Column title");
@@ -63,7 +85,7 @@ describe("KanbanBoard", () => {
     fireEvent.blur(input);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/board",
+        `/api/boards/${TEST_BOARD_ID}`,
         expect.objectContaining({
           method: "PUT",
           body: expect.stringContaining("New Name"),
@@ -73,12 +95,10 @@ describe("KanbanBoard", () => {
   });
 
   it("adds and removes a card", async () => {
-    render(<KanbanBoard onLogout={() => {}} userName="user" />);
+    render(<KanbanBoard {...defaultProps} />);
     await screen.findAllByTestId(/column-/i);
     const column = getFirstColumn();
-    const addButton = within(column).getByRole("button", {
-      name: /add a card/i,
-    });
+    const addButton = within(column).getByRole("button", { name: /add a card/i });
     await userEvent.click(addButton);
 
     const titleInput = within(column).getByPlaceholderText(/card title/i);
@@ -90,21 +110,19 @@ describe("KanbanBoard", () => {
 
     expect(within(column).getByText("New card")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/board",
+      `/api/boards/${TEST_BOARD_ID}`,
       expect.objectContaining({
         method: "PUT",
         body: expect.stringContaining("New card"),
       }),
     );
 
-    const deleteButton = within(column).getByRole("button", {
-      name: /delete new card/i,
-    });
+    const deleteButton = within(column).getByRole("button", { name: /delete new card/i });
     await userEvent.click(deleteButton);
 
     expect(within(column).queryByText("New card")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/board",
+      `/api/boards/${TEST_BOARD_ID}`,
       expect.objectContaining({ method: "PUT" }),
     );
   });
@@ -172,7 +190,6 @@ describe("KanbanColumn title sync", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "User typing");
 
-    // External update arrives while the user is mid-edit
     rerender(
       <KanbanColumn
         column={{ ...column, title: "Original" }}
@@ -183,7 +200,6 @@ describe("KanbanColumn title sync", () => {
       />,
     );
 
-    // The user's in-progress text should be preserved
     expect(input).toHaveValue("User typing");
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { sendAiChat } from "@/lib/api";
 import { createId, type BoardData } from "@/lib/kanban";
 import { useState, type FormEvent } from "react";
 
@@ -17,17 +18,14 @@ type ChatMessage = {
 
 type ChatSidebarProps = {
   board: BoardData;
+  boardId: string;
   disabled?: boolean;
   onBoardUpdate: (board: BoardData) => void;
 };
 
-type ChatResponse = {
-  response: string;
-  board?: BoardData | null;
-};
-
 export const ChatSidebar = ({
   board,
+  boardId,
   disabled = false,
   onBoardUpdate,
 }: ChatSidebarProps) => {
@@ -38,13 +36,9 @@ export const ChatSidebar = ({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (disabled || isSending) {
-      return;
-    }
+    if (disabled || isSending) return;
     const message = input.trim();
-    if (!message) {
-      return;
-    }
+    if (!message) return;
 
     setInput("");
     setError(null);
@@ -55,15 +49,7 @@ export const ChatSidebar = ({
     ]);
 
     try {
-      const response = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, board }),
-      });
-      if (!response.ok) {
-        throw new Error("AI request failed");
-      }
-      const payload = (await response.json()) as ChatResponse;
+      const payload = await sendAiChat(boardId, message, board);
       setMessages((prev) => [
         ...prev,
         { id: createId("msg"), role: "assistant", content: payload.response },
@@ -96,8 +82,7 @@ export const ChatSidebar = ({
           Board copilot
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
-          Send a request and the assistant will update cards or column flow for
-          you.
+          Send a request and the assistant will update cards or column flow for you.
         </p>
       </div>
 
@@ -114,9 +99,7 @@ export const ChatSidebar = ({
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
               {message.role === "user" ? "You" : "Assistant"}
             </p>
-            <p className="mt-2 text-sm text-[var(--navy-dark)]">
-              {message.content}
-            </p>
+            <p className="mt-2 text-sm text-[var(--navy-dark)]">{message.content}</p>
           </div>
         ))}
       </div>
@@ -134,7 +117,7 @@ export const ChatSidebar = ({
             className="min-h-[120px] resize-none rounded-2xl border border-[var(--stroke)] bg-white px-4 py-3 text-sm font-medium text-[var(--navy-dark)] shadow-sm focus:border-[var(--primary-blue)] focus:outline-none"
             placeholder="Move the roadmap card to Review and add a QA note."
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(e) => setInput(e.target.value)}
             disabled={disabled || isSending}
           />
         </label>

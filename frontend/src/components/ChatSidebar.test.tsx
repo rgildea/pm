@@ -4,21 +4,23 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const TEST_BOARD_ID = "test-board-id";
+
 const updatedBoard = {
   columns: [{ id: "col-a", title: "A", cardIds: [] }],
   cards: {},
 };
 
 const mockFetch = () => {
-  const fetchMock = vi.fn().mockImplementation((url, init) => {
-    if (url === "/api/ai/chat" && init?.method === "POST") {
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (
+      url === `/api/boards/${TEST_BOARD_ID}/ai/chat` &&
+      init?.method === "POST"
+    ) {
       return Promise.resolve(
         new Response(
           JSON.stringify({ response: "Updated", board: updatedBoard }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
+          { status: 200, headers: { "Content-Type": "application/json" } },
         ),
       );
     }
@@ -45,7 +47,13 @@ describe("ChatSidebar", () => {
       vi.fn().mockResolvedValue(new Response("error", { status: 500 })),
     );
     const onBoardUpdate = vi.fn();
-    render(<ChatSidebar board={initialData} onBoardUpdate={onBoardUpdate} />);
+    render(
+      <ChatSidebar
+        board={initialData}
+        boardId={TEST_BOARD_ID}
+        onBoardUpdate={onBoardUpdate}
+      />,
+    );
     await userEvent.type(screen.getByLabelText(/your request/i), "Move a card.");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(await screen.findByText("Unable to reach the AI assistant.")).toBeInTheDocument();
@@ -55,7 +63,13 @@ describe("ChatSidebar", () => {
 
   it("sends a message and applies board updates", async () => {
     const onBoardUpdate = vi.fn();
-    render(<ChatSidebar board={initialData} onBoardUpdate={onBoardUpdate} />);
+    render(
+      <ChatSidebar
+        board={initialData}
+        boardId={TEST_BOARD_ID}
+        onBoardUpdate={onBoardUpdate}
+      />,
+    );
 
     await userEvent.type(
       screen.getByLabelText(/your request/i),

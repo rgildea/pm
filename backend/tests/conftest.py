@@ -5,6 +5,9 @@ from typing import Any, Iterator
 
 from dotenv import load_dotenv
 import pytest
+from fastapi.testclient import TestClient
+
+from app.main import create_app
 
 
 TEST_DEFAULT_DB_PATH = Path(tempfile.gettempdir()) / "pm-backend-tests" / "app.db"
@@ -46,3 +49,20 @@ def realistic_board() -> dict[str, Any]:
             },
         },
     }
+
+
+def login(client: TestClient, username: str = "user", password: str = "password") -> str:
+    """Log in and return Bearer auth header value."""
+    resp = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert resp.status_code == 200, f"Login failed: {resp.text}"
+    return f"Bearer {resp.json()['token']}"
+
+
+@pytest.fixture
+def app_client(tmp_path: Path):
+    """Returns (client, auth_headers) for the default user."""
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+    auth = login(client)
+    return client, {"Authorization": auth}

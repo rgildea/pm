@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.auth import generate_token, hash_password
 from app.board_defaults import DEFAULT_BOARD_STATE, DEFAULT_BOARD_TITLE
 
 DEFAULT_USER_ID = "user"
 DEFAULT_USERNAME = "user"
+DEFAULT_PASSWORD = "password"
 
 
 @dataclass
@@ -17,6 +19,15 @@ class BoardRecord:
     board_id: str
     title: str
     state: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+@dataclass
+class UserRecord:
+    user_id: str
+    username: str
+    password_hash: str
 
 
 def _utc_now() -> str:
@@ -24,26 +35,45 @@ def _utc_now() -> str:
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
-    return sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with _connect(db_path) as connection:
-        connection.execute(
+    with _connect(db_path) as conn:
+        conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             )
             """
         )
-        connection.execute(
+        # Migrate: add password_hash if missing (existing DBs without it)
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
             """
             CREATE TABLE IF NOT EXISTS boards (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id),
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 title TEXT NOT NULL,
                 state_json TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -51,84 +81,215 @@ def init_db(db_path: Path) -> None:
             )
             """
         )
-        connection.execute(
+        conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_boards_user_id
             ON boards(user_id)
             """
         )
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO users (id, username, created_at)
-            VALUES (?, ?, ?)
-            """,
-            (DEFAULT_USER_ID, DEFAULT_USERNAME, _utc_now()),
+
+        # Seed default user if missing
+        now = _utc_now()
+        default_hash = hash_password(DEFAULT_PASSWORD)
+        existing = conn.execute(
+            "SELECT id, password_hash FROM users WHERE id = ?", (DEFAULT_USER_ID,)
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+                (DEFAULT_USER_ID, DEFAULT_USERNAME, default_hash, now),
+            )
+        elif existing[1] == "":
+            # Migrate existing user without password hash
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (default_hash, DEFAULT_USER_ID),
+            )
+
+        conn.commit()
+
+
+# --- Auth helpers ---
+
+
+def get_user_by_username(db_path: Path, username: str) -> UserRecord | None:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    if row is None:
+        return None
+    return UserRecord(user_id=row[0], username=row[1], password_hash=row[2])
+
+
+def create_user(db_path: Path, username: str, password_hash: str) -> UserRecord:
+    user_id = str(uuid4())
+    now = _utc_now()
+    with _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, username, password_hash, now),
         )
-        connection.commit()
+        conn.commit()
+    return UserRecord(user_id=user_id, username=username, password_hash=password_hash)
 
 
-def _row_to_board(row: sqlite3.Row) -> BoardRecord:
-    return BoardRecord(board_id=row[0], title=row[1], state=json.loads(row[2]))
+def create_session(db_path: Path, user_id: str) -> str:
+    token = generate_token()
+    now = _utc_now()
+    # Sessions expire in 30 days
+    from datetime import timedelta
+    expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    with _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token, user_id, now, expires),
+        )
+        conn.commit()
+    return token
 
 
-def _get_board(connection: sqlite3.Connection, user_id: str) -> BoardRecord | None:
-    connection.row_factory = sqlite3.Row
-    row = connection.execute(
-        "SELECT id, title, state_json FROM boards WHERE user_id = ?",
-        (user_id,),
-    ).fetchone()
+def get_session_user_id(db_path: Path, token: str) -> str | None:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT user_id, expires_at FROM sessions WHERE token = ?",
+            (token,),
+        ).fetchone()
+    if row is None:
+        return None
+    user_id, expires_at = row
+    if datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
+        return None
+    return user_id
+
+
+def delete_session(db_path: Path, token: str) -> None:
+    with _connect(db_path) as conn:
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.commit()
+
+
+# --- Board helpers ---
+
+
+def _row_to_board(row: tuple) -> BoardRecord:
+    return BoardRecord(
+        board_id=row[0],
+        title=row[1],
+        state=json.loads(row[2]),
+        created_at=row[3],
+        updated_at=row[4],
+    )
+
+
+def list_boards(db_path: Path, user_id: str) -> list[BoardRecord]:
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, title, state_json, created_at, updated_at FROM boards WHERE user_id = ? ORDER BY created_at ASC",
+            (user_id,),
+        ).fetchall()
+    return [_row_to_board(row) for row in rows]
+
+
+def get_board(db_path: Path, board_id: str, user_id: str) -> BoardRecord | None:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, title, state_json, created_at, updated_at FROM boards WHERE id = ? AND user_id = ?",
+            (board_id, user_id),
+        ).fetchone()
     if row is None:
         return None
     return _row_to_board(row)
 
 
-def _create_board(connection: sqlite3.Connection, user_id: str) -> BoardRecord:
+def get_or_create_default_board(db_path: Path, user_id: str) -> BoardRecord:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, title, state_json, created_at, updated_at FROM boards WHERE user_id = ? ORDER BY created_at ASC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if row is not None:
+            return _row_to_board(row)
+        return _create_board_in_conn(conn, user_id, DEFAULT_BOARD_TITLE, DEFAULT_BOARD_STATE)
+
+
+def _create_board_in_conn(
+    conn: sqlite3.Connection, user_id: str, title: str, state: dict[str, Any]
+) -> BoardRecord:
     now = _utc_now()
     board_id = str(uuid4())
-    state_json = json.dumps(DEFAULT_BOARD_STATE)
-    connection.execute(
-        """
-        INSERT INTO boards (id, user_id, title, state_json, updated_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (board_id, user_id, DEFAULT_BOARD_TITLE, state_json, now, now),
+    state_json = json.dumps(state)
+    conn.execute(
+        "INSERT INTO boards (id, user_id, title, state_json, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (board_id, user_id, title, state_json, now, now),
     )
-    connection.commit()
-    return BoardRecord(board_id=board_id, title=DEFAULT_BOARD_TITLE, state=DEFAULT_BOARD_STATE)
+    conn.commit()
+    return BoardRecord(board_id=board_id, title=title, state=state, created_at=now, updated_at=now)
 
 
-def get_board_state(db_path: Path, user_id: str = DEFAULT_USER_ID) -> dict[str, Any]:
-    with _connect(db_path) as connection:
-        board = _get_board(connection, user_id)
-        if board is None:
-            board = _create_board(connection, user_id)
-        return board.state
+def create_board(db_path: Path, user_id: str, title: str) -> BoardRecord:
+    with _connect(db_path) as conn:
+        return _create_board_in_conn(conn, user_id, title, DEFAULT_BOARD_STATE)
 
 
 def update_board_state(
+    db_path: Path, board_id: str, user_id: str, state: dict[str, Any]
+) -> BoardRecord | None:
+    now = _utc_now()
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE boards SET state_json = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(state), now, board_id, user_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute(
+            "SELECT id, title, state_json, created_at, updated_at FROM boards WHERE id = ?",
+            (board_id,),
+        ).fetchone()
+    return _row_to_board(row)
+
+
+def rename_board(db_path: Path, board_id: str, user_id: str, title: str) -> BoardRecord | None:
+    now = _utc_now()
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE boards SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+            (title, now, board_id, user_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute(
+            "SELECT id, title, state_json, created_at, updated_at FROM boards WHERE id = ?",
+            (board_id,),
+        ).fetchone()
+    return _row_to_board(row)
+
+
+def delete_board(db_path: Path, board_id: str, user_id: str) -> bool:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "DELETE FROM boards WHERE id = ? AND user_id = ?",
+            (board_id, user_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+# --- Legacy single-board helpers (kept for backward compat) ---
+
+
+def get_board_state(db_path: Path, user_id: str = DEFAULT_USER_ID) -> dict[str, Any]:
+    board = get_or_create_default_board(db_path, user_id)
+    return board.state
+
+
+def update_board_state_legacy(
     db_path: Path, board_state: dict[str, Any], user_id: str = DEFAULT_USER_ID
 ) -> dict[str, Any]:
-    with _connect(db_path) as connection:
-        board = _get_board(connection, user_id)
-        now = _utc_now()
-        state_json = json.dumps(board_state)
-        if board is None:
-            board_id = str(uuid4())
-            connection.execute(
-                """
-                INSERT INTO boards (id, user_id, title, state_json, updated_at, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (board_id, user_id, DEFAULT_BOARD_TITLE, state_json, now, now),
-            )
-        else:
-            connection.execute(
-                """
-                UPDATE boards
-                SET state_json = ?, updated_at = ?
-                WHERE user_id = ?
-                """,
-                (state_json, now, user_id),
-            )
-        connection.commit()
+    board = get_or_create_default_board(db_path, user_id)
+    update_board_state(db_path, board.board_id, user_id, board_state)
     return board_state

@@ -1,48 +1,152 @@
 "use client";
 
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { useState, type FormEvent } from "react";
+import {
+  login,
+  register,
+  logout,
+  fetchBoards,
+  storeToken,
+  clearToken,
+  getStoredToken,
+  ApiError,
+} from "@/lib/api";
+import type { BoardSummary } from "@/lib/api";
+import { useEffect, useState, type FormEvent } from "react";
 
-const VALID_USERNAME = "user";
-const VALID_PASSWORD = "password";
+type AppState =
+  | { status: "loading" }
+  | { status: "unauthenticated" }
+  | { status: "authenticated"; username: string; boards: BoardSummary[]; activeBoardId: string };
 
 export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<AppState>({ status: "loading" });
 
-  const handleLogin = (username: string, password: string) => {
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-      setIsAuthenticated(true);
-      setError(null);
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      setState({ status: "unauthenticated" });
       return;
     }
+    // Verify the stored token is still valid
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (!res.ok) throw new Error("Invalid token");
+        return res.json() as Promise<{ username: string }>;
+      })
+      .then(({ username }) =>
+        fetchBoards().then((boards) => {
+          const activeBoardId = boards[0]?.id ?? "";
+          setState({ status: "authenticated", username, boards, activeBoardId });
+        })
+      )
+      .catch(() => {
+        clearToken();
+        setState({ status: "unauthenticated" });
+      });
+  }, []);
 
-    setError("Invalid username or password.");
+  const handleLogin = async (username: string, password: string) => {
+    const result = await login(username, password);
+    storeToken(result.token);
+    const boards = await fetchBoards();
+    setState({
+      status: "authenticated",
+      username: result.username,
+      boards,
+      activeBoardId: boards[0]?.id ?? "",
+    });
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
+  const handleRegister = async (username: string, password: string) => {
+    const result = await register(username, password);
+    storeToken(result.token);
+    const boards = await fetchBoards();
+    setState({
+      status: "authenticated",
+      username: result.username,
+      boards,
+      activeBoardId: boards[0]?.id ?? "",
+    });
   };
 
-  if (!isAuthenticated) {
-    return <LoginScreen onLogin={handleLogin} error={error} />;
+  const handleLogout = async () => {
+    await logout();
+    clearToken();
+    setState({ status: "unauthenticated" });
+  };
+
+  if (state.status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--surface)]">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+          Loading
+        </p>
+      </div>
+    );
   }
 
-  return <KanbanBoard onLogout={handleLogout} userName={VALID_USERNAME} />;
+  if (state.status === "unauthenticated") {
+    return (
+      <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />
+    );
+  }
+
+  return (
+    <KanbanBoard
+      onLogout={() => void handleLogout()}
+      userName={state.username}
+      boards={state.boards}
+      activeBoardId={state.activeBoardId}
+      onBoardsChange={(boards) =>
+        setState({ ...state, boards })
+      }
+      onActiveBoardChange={(activeBoardId) =>
+        setState({ ...state, activeBoardId })
+      }
+    />
+  );
 }
 
-type LoginScreenProps = {
-  onLogin: (username: string, password: string) => void;
-  error: string | null;
+type AuthScreenProps = {
+  onLogin: (username: string, password: string) => Promise<void>;
+  onRegister: (username: string, password: string) => Promise<void>;
 };
 
-const LoginScreen = ({ onLogin, error }: LoginScreenProps) => {
-  const [username, setUsername] = useState(VALID_USERNAME);
+const AuthScreen = ({ onLogin, onRegister }: AuthScreenProps) => {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [username, setUsername] = useState("user");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onLogin(username.trim(), password);
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      if (mode === "login") {
+        await onLogin(username.trim(), password);
+      } else {
+        await onRegister(username.trim(), password);
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const switchMode = (next: "login" | "register") => {
+    setMode(next);
+    setError(null);
+    setPassword("");
+    if (next === "register") setUsername("");
+    else setUsername("user");
   };
 
   return (
@@ -51,17 +155,19 @@ const LoginScreen = ({ onLogin, error }: LoginScreenProps) => {
       <div className="pointer-events-none absolute bottom-0 right-0 h-[460px] w-[460px] translate-x-1/4 translate-y-1/4 rounded-full bg-[radial-gradient(circle,_rgba(117,57,145,0.18)_0%,_rgba(117,57,145,0.05)_55%,_transparent_75%)]" />
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => void handleSubmit(e)}
         className="relative w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-white/90 p-8 shadow-[var(--shadow)] backdrop-blur"
       >
         <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-          Sign in
+          {mode === "login" ? "Sign in" : "Create account"}
         </p>
         <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
-          Welcome back
+          {mode === "login" ? "Welcome back" : "Get started"}
         </h1>
         <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
-          Use the demo credentials to access the project board.
+          {mode === "login"
+            ? "Sign in to access your project boards."
+            : "Create an account to start managing your projects."}
         </p>
 
         <div className="mt-6 space-y-4">
@@ -72,7 +178,8 @@ const LoginScreen = ({ onLogin, error }: LoginScreenProps) => {
               type="text"
               autoComplete="username"
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(e) => setUsername(e.target.value)}
+              required
             />
           </label>
           <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
@@ -80,9 +187,10 @@ const LoginScreen = ({ onLogin, error }: LoginScreenProps) => {
             <input
               className="rounded-xl border border-[var(--stroke)] bg-white px-4 py-3 text-sm font-medium text-[var(--navy-dark)] shadow-sm focus:border-[var(--primary-blue)] focus:outline-none"
               type="password"
-              autoComplete="current-password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
+              required
             />
           </label>
         </div>
@@ -95,13 +203,36 @@ const LoginScreen = ({ onLogin, error }: LoginScreenProps) => {
 
         <button
           type="submit"
-          className="mt-6 w-full rounded-xl bg-[var(--secondary-purple)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[color:rgba(117,57,145,0.9)]"
+          disabled={isSubmitting}
+          className="mt-6 w-full rounded-xl bg-[var(--secondary-purple)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[color:rgba(117,57,145,0.9)] disabled:opacity-60"
         >
-          Sign in
+          {isSubmitting
+            ? mode === "login" ? "Signing in" : "Creating account"
+            : mode === "login" ? "Sign in" : "Create account"}
         </button>
-        <p className="mt-4 text-xs text-[var(--gray-text)]">
-          Demo credentials: user / password
-        </p>
+
+        <div className="mt-4 flex items-center justify-between text-xs text-[var(--gray-text)]">
+          {mode === "login" ? (
+            <>
+              <span>Demo: user / password</span>
+              <button
+                type="button"
+                onClick={() => switchMode("register")}
+                className="font-semibold text-[var(--primary-blue)] hover:underline"
+              >
+                Create account
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => switchMode("login")}
+              className="font-semibold text-[var(--primary-blue)] hover:underline"
+            >
+              Already have an account? Sign in
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.ai import _strip_code_fences, call_openrouter
 from app.main import create_app
+from tests.conftest import login
 
 
 class DummyResponse:
@@ -63,15 +64,17 @@ def test_ai_chat_applies_board_update(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "app.db"
     app = create_app(db_path)
     client = TestClient(app)
+    auth = login(client)
+    headers = {"Authorization": auth}
 
-    board = client.get("/api/board").json()["board"]
-    response = client.post("/api/ai/chat", json={"message": "Update", "board": board})
+    board = client.get("/api/board", headers=headers).json()["board"]
+    response = client.post("/api/ai/chat", json={"message": "Update", "board": board}, headers=headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["response"] == "Updated"
     assert payload["board"] == updated_board
 
-    reread = client.get("/api/board")
+    reread = client.get("/api/board", headers=headers)
     assert reread.status_code == 200
     assert reread.json()["board"] == updated_board
 
@@ -95,14 +98,16 @@ def test_ai_chat_sends_board_json_and_history(
     db_path = tmp_path / "app.db"
     app = create_app(db_path)
     client = TestClient(app)
+    auth = login(client)
+    headers = {"Authorization": auth}
 
     first_response = client.post(
-        "/api/ai/chat", json={"message": "First update", "board": realistic_board}
+        "/api/ai/chat", json={"message": "First update", "board": realistic_board}, headers=headers
     )
     assert first_response.status_code == 200
 
     second_response = client.post(
-        "/api/ai/chat", json={"message": "Second update", "board": realistic_board}
+        "/api/ai/chat", json={"message": "Second update", "board": realistic_board}, headers=headers
     )
     assert second_response.status_code == 200
 
@@ -133,9 +138,11 @@ def test_ai_chat_rejects_invalid_response(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "app.db"
     app = create_app(db_path)
     client = TestClient(app)
+    auth = login(client)
+    headers = {"Authorization": auth}
 
-    board = client.get("/api/board").json()["board"]
-    response = client.post("/api/ai/chat", json={"message": "Update", "board": board})
+    board = client.get("/api/board", headers=headers).json()["board"]
+    response = client.post("/api/ai/chat", json={"message": "Update", "board": board}, headers=headers)
     assert response.status_code == 502
 
 
@@ -160,16 +167,64 @@ def test_ai_chat_accepts_fenced_json(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "app.db"
     app = create_app(db_path)
     client = TestClient(app)
+    auth = login(client)
+    headers = {"Authorization": auth}
 
-    board = client.get("/api/board").json()["board"]
-    response = client.post("/api/ai/chat", json={"message": "Update", "board": board})
+    board = client.get("/api/board", headers=headers).json()["board"]
+    response = client.post("/api/ai/chat", json={"message": "Update", "board": board}, headers=headers)
     assert response.status_code == 200
     assert response.json()["board"] == updated_board
 
 
+def test_ai_chat_per_board(monkeypatch, tmp_path) -> None:
+    """AI chat on a specific board endpoint applies updates to that board only."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    updated_board = {
+        "columns": [{"id": "col-x", "title": "X", "cardIds": []}],
+        "cards": {},
+    }
+    response_payload = json.dumps({"response": "Done", "board": updated_board})
+
+    def fake_post(*_, **__) -> DummyResponse:
+        return DummyResponse({"choices": [{"message": {"content": response_payload}}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+    auth = login(client)
+    headers = {"Authorization": auth}
+
+    # Create a specific board
+    board_id = client.post("/api/boards", json={"title": "AI Test Board"}, headers=headers).json()["board"]["id"]
+    board_state = client.get(f"/api/boards/{board_id}", headers=headers).json()["board"]
+
+    resp = client.post(
+        f"/api/boards/{board_id}/ai/chat",
+        json={"message": "Change it", "board": board_state},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["board"] == updated_board
+
+    # The board should now have the updated state
+    reread = client.get(f"/api/boards/{board_id}", headers=headers).json()["board"]
+    assert reread == updated_board
+
+
+def test_ai_chat_requires_auth(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    app = create_app(db_path)
+    client = TestClient(app)
+
+    board = {"columns": [], "cards": {}}
+    resp = client.post("/api/ai/chat", json={"message": "hi", "board": board})
+    assert resp.status_code == 401
+
+
 def test_strip_code_fences_preserves_backtick_in_content() -> None:
-    # JSON value that ends with a backtick — the old strip("`") call would
-    # corrupt the content by eating the trailing backtick from the value.
     inner = json.dumps({"response": "use `code`", "board": None})
     fenced = f"```json\n{inner}\n```"
     result = _strip_code_fences(fenced)

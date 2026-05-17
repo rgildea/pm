@@ -3,6 +3,9 @@
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { KanbanColumn } from "@/components/KanbanColumn";
+import { BoardSelector } from "@/components/BoardSelector";
+import { fetchBoard, persistBoard, sendAiChat } from "@/lib/api";
+import type { BoardSummary } from "@/lib/api";
 import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 import {
   closestCorners,
@@ -15,29 +18,35 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import {
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 
 type KanbanBoardProps = {
   onLogout: () => void;
   userName: string;
+  boards: BoardSummary[];
+  activeBoardId: string;
+  onBoardsChange: (boards: BoardSummary[]) => void;
+  onActiveBoardChange: (boardId: string) => void;
 };
 
-export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
+export const KanbanBoard = ({
+  onLogout,
+  userName,
+  boards,
+  activeBoardId,
+  onBoardsChange,
+  onActiveBoardChange,
+}: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData | null>(null);
+  const [boardTitle, setBoardTitle] = useState<string>("");
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const boardData = board ?? initialData;
@@ -49,13 +58,10 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/board");
-        if (!response.ok) {
-          throw new Error("Failed to load board");
-        }
-        const payload = (await response.json()) as { board: BoardData };
+        const data = await fetchBoard(activeBoardId);
         if (isMounted) {
-          setBoard(payload.board);
+          setBoard(data.board);
+          setBoardTitle(data.title);
         }
       } catch {
         if (isMounted) {
@@ -63,30 +69,17 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
           setError("Unable to load board. Showing local data.");
         }
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (isMounted) setIsLoading(false);
       }
     };
-
     void loadBoard();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    return () => { isMounted = false; };
+  }, [activeBoardId]);
 
-  const persistBoard = async (nextBoard: BoardData) => {
+  const saveBoard = async (nextBoard: BoardData) => {
     try {
-      const response = await fetch("/api/board", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ board: nextBoard }),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to save board");
-      }
-      const payload = (await response.json()) as { board: BoardData };
-      setBoard(payload.board);
+      const saved = await persistBoard(activeBoardId, nextBoard);
+      setBoard(saved);
       setError(null);
     } catch {
       setError("Unable to save changes. They may not persist after refresh.");
@@ -96,7 +89,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   const updateBoard = (updater: (current: BoardData) => BoardData) => {
     const nextBoard = updater(board ?? initialData);
     setBoard(nextBoard);
-    void persistBoard(nextBoard);
+    void saveBoard(nextBoard);
   };
 
   const handleAiBoardUpdate = (nextBoard: BoardData) => {
@@ -111,26 +104,18 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
-
-    if (!over || active.id === over.id) {
-      return;
-    }
-
+    if (!over || active.id === over.id) return;
     updateBoard((current) => ({
       ...current,
-      columns: moveCard(
-        current.columns,
-        active.id as string,
-        over.id as string,
-      ),
+      columns: moveCard(current.columns, active.id as string, over.id as string),
     }));
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
     updateBoard((current) => ({
       ...current,
-      columns: current.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column,
+      columns: current.columns.map((col) =>
+        col.id === columnId ? { ...col, title } : col,
       ),
     }));
   };
@@ -139,14 +124,9 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
     const id = createId("card");
     updateBoard((current) => ({
       ...current,
-      cards: {
-        ...current.cards,
-        [id]: { id, title, details: details || "No details yet." },
-      },
-      columns: current.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column,
+      cards: { ...current.cards, [id]: { id, title, details: details || "No details yet." } },
+      columns: current.columns.map((col) =>
+        col.id === columnId ? { ...col, cardIds: [...col.cardIds, id] } : col,
       ),
     }));
   };
@@ -154,18 +134,21 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
   const handleDeleteCard = (columnId: string, cardId: string) => {
     updateBoard((current) => ({
       ...current,
-      cards: Object.fromEntries(
-        Object.entries(current.cards).filter(([id]) => id !== cardId),
-      ),
-      columns: current.columns.map((column) =>
-        column.id === columnId
-          ? {
-              ...column,
-              cardIds: column.cardIds.filter((id) => id !== cardId),
-            }
-          : column,
+      cards: Object.fromEntries(Object.entries(current.cards).filter(([id]) => id !== cardId)),
+      columns: current.columns.map((col) =>
+        col.id === columnId
+          ? { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) }
+          : col,
       ),
     }));
+  };
+
+  const handleAiChat = async (message: string) => {
+    const response = await sendAiChat(activeBoardId, message, boardData);
+    if (response.board) {
+      handleAiBoardUpdate(response.board);
+    }
+    return response;
   };
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
@@ -190,27 +173,22 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-                Single Board Kanban
+                Project Management
               </p>
               <h1 className="mt-3 font-display text-4xl font-semibold text-[var(--navy-dark)]">
-                Kanban Studio
+                {boardTitle || "Kanban Studio"}
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--gray-text)]">
-                Keep momentum visible. Rename columns, drag cards between
-                stages, and capture quick notes without getting buried in
-                settings.
+                Keep momentum visible. Rename columns, drag cards between stages, and use AI to manage cards.
               </p>
             </div>
             <div className="flex flex-col items-end gap-3">
               <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
-                  Focus
+                  Signed in as
                 </p>
                 <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
-                  One board. Five columns. Zero clutter.
-                </p>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-                  Signed in as {userName}
+                  {userName}
                 </p>
               </div>
               <button
@@ -222,19 +200,16 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
               </button>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            {boardData.columns.map((column) => (
-              <div
-                key={column.id}
-                className="flex items-center gap-2 rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--navy-dark)]"
-              >
-                <span className="h-2 w-2 rounded-full bg-[var(--accent-yellow)]" />
-                {column.title}
-              </div>
-            ))}
-          </div>
+
+          <BoardSelector
+            boards={boards}
+            activeBoardId={activeBoardId}
+            onSelect={onActiveBoardChange}
+            onBoardsChange={onBoardsChange}
+          />
+
           {error ? (
-            <div className="mt-4 rounded-2xl border border-[color:rgba(117,57,145,0.3)] bg-[color:rgba(117,57,145,0.08)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--secondary-purple)]">
+            <div className="rounded-2xl border border-[color:rgba(117,57,145,0.3)] bg-[color:rgba(117,57,145,0.08)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--secondary-purple)]">
               {error}
             </div>
           ) : null}
@@ -252,9 +227,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
                 <KanbanColumn
                   key={column.id}
                   column={column}
-                  cards={column.cardIds.map(
-                    (cardId) => boardData.cards[cardId],
-                  )}
+                  cards={column.cardIds.map((cardId) => boardData.cards[cardId])}
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
@@ -271,6 +244,7 @@ export const KanbanBoard = ({ onLogout, userName }: KanbanBoardProps) => {
           </DndContext>
           <ChatSidebar
             board={boardData}
+            boardId={activeBoardId}
             disabled={isLoading}
             onBoardUpdate={handleAiBoardUpdate}
           />

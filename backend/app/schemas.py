@@ -39,6 +39,21 @@ class BoardUpdateRequest(BaseModel):
     board: BoardState
 
 
+class BoardRenameRequest(BaseModel):
+    title: str
+
+
+class BoardCreateRequest(BaseModel):
+    title: str
+
+
+class BoardSummary(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+
+
 class AIChatRequest(BaseModel):
     message: str
     board: BoardState
@@ -47,3 +62,18 @@ class AIChatRequest(BaseModel):
 class AIChatResponse(BaseModel):
     response: str
     board: BoardState | None = None
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    username: str
