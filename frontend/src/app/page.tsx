@@ -7,8 +7,10 @@ import {
   logout,
   fetchBoards,
   storeToken,
+  storeUsername,
   clearToken,
   getStoredToken,
+  getStoredUsername,
   ApiError,
 } from "@/lib/api";
 import type { BoardSummary } from "@/lib/api";
@@ -28,15 +30,14 @@ export default function Home() {
       setState({ status: "unauthenticated" });
       return;
     }
-    Promise.all([
-      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => {
-          if (!res.ok) throw new Error("Invalid token");
-          return res.json() as Promise<{ username: string }>;
-        }),
-      fetchBoards(),
-    ])
-      .then(([{ username }, boards]) => {
+    const username = getStoredUsername();
+    if (!username) {
+      clearToken();
+      setState({ status: "unauthenticated" });
+      return;
+    }
+    fetchBoards()
+      .then((boards) => {
         setState({ status: "authenticated", username, boards, activeBoardId: boards[0]?.id ?? "" });
       })
       .catch(() => {
@@ -48,6 +49,7 @@ export default function Home() {
   const handleLogin = async (username: string, password: string) => {
     const result = await login(username, password);
     storeToken(result.token);
+    storeUsername(result.username);
     const boards = await fetchBoards();
     setState({
       status: "authenticated",
@@ -60,6 +62,7 @@ export default function Home() {
   const handleRegister = async (username: string, password: string) => {
     const result = await register(username, password);
     storeToken(result.token);
+    storeUsername(result.username);
     const boards = await fetchBoards();
     setState({
       status: "authenticated",
@@ -148,6 +151,10 @@ const AuthScreen = ({ onLogin, onRegister }: AuthScreenProps) => {
     else setUsername("user");
   };
 
+  const buttonLabel = mode === "login"
+    ? { idle: "Sign in", busy: "Signing in" }
+    : { idle: "Create account", busy: "Creating account" };
+
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[var(--surface)] px-6 py-12">
       <div className="pointer-events-none absolute left-0 top-0 h-[380px] w-[380px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-[radial-gradient(circle,_rgba(32,157,215,0.25)_0%,_rgba(32,157,215,0.05)_55%,_transparent_70%)]" />
@@ -205,9 +212,7 @@ const AuthScreen = ({ onLogin, onRegister }: AuthScreenProps) => {
           disabled={isSubmitting}
           className="mt-6 w-full rounded-xl bg-[var(--secondary-purple)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[color:rgba(117,57,145,0.9)] disabled:opacity-60"
         >
-          {isSubmitting
-            ? (mode === "login" ? "Signing in" : "Creating account")
-            : (mode === "login" ? "Sign in" : "Create account")}
+          {isSubmitting ? buttonLabel.busy : buttonLabel.idle}
         </button>
 
         <div className="mt-4 flex items-center justify-between text-xs text-[var(--gray-text)]">

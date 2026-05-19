@@ -1,6 +1,7 @@
 import type { BoardData } from "./kanban";
 
 const TOKEN_KEY = "pm_token";
+const USERNAME_KEY = "pm_username";
 
 export type BoardSummary = {
   id: string;
@@ -19,12 +20,22 @@ export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+export function getStoredUsername(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(USERNAME_KEY);
+}
+
 export function storeToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+export function storeUsername(username: string): void {
+  localStorage.setItem(USERNAME_KEY, username);
+}
+
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USERNAME_KEY);
 }
 
 function authHeaders(): Record<string, string> {

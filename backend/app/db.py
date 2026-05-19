@@ -191,6 +191,14 @@ def _row_to_board(row: tuple) -> BoardRecord:
     )
 
 
+def count_boards(db_path: Path, user_id: str) -> int:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM boards WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return row[0]
+
+
 def list_boards(db_path: Path, user_id: str) -> list[BoardRecord]:
     with _connect(db_path) as conn:
         rows = conn.execute(

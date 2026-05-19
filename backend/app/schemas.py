@@ -1,4 +1,4 @@
-import re
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, model_validator
@@ -14,8 +14,10 @@ class Card(BaseModel):
     @model_validator(mode="after")
     def _check_fields(self) -> "Card":
         if self.due_date is not None:
-            if not re.match(r"^\d{4}-\d{2}-\d{2}$", self.due_date):
-                raise ValueError("due_date must be in YYYY-MM-DD format")
+            try:
+                date.fromisoformat(self.due_date)
+            except ValueError:
+                raise ValueError("due_date must be a valid date in YYYY-MM-DD format")
         return self
 
 

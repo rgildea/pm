@@ -16,6 +16,7 @@ from app.ai import (
 )
 from app.auth import hash_password, verify_password
 from app.db import (
+    count_boards,
     create_board,
     create_session,
     create_user,
@@ -95,7 +96,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": ai_response.response})
-        del history[:-MAX_AI_HISTORY_MESSAGES]
+        history[:] = history[-MAX_AI_HISTORY_MESSAGES:]
 
         response_board = None
         if ai_response.board is not None:
@@ -233,10 +234,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         board_id: str,
         user_id: str = Depends(get_current_user),
     ) -> JSONResponse:
-        boards = list_boards(db_path, user_id)
-        if not any(b.board_id == board_id for b in boards):
+        if get_board(db_path, board_id, user_id) is None:
             raise HTTPException(status_code=404, detail="Board not found")
-        if len(boards) <= 1:
+        if count_boards(db_path, user_id) <= 1:
             raise HTTPException(status_code=409, detail="Cannot delete your only board")
         delete_board(db_path, board_id, user_id)
         return JSONResponse({"ok": True})
