@@ -4,6 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { useState } from "react";
+import { isOverdue } from "@/lib/kanban";
 import type { Card, Priority } from "@/lib/kanban";
 
 const PRIORITY_STYLES: Record<Priority, string> = {
@@ -11,11 +12,6 @@ const PRIORITY_STYLES: Record<Priority, string> = {
   medium: "bg-amber-100 text-amber-700 border-amber-200",
   low: "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
-
-function isOverdue(dueDate: string | null | undefined): boolean {
-  if (!dueDate) return false;
-  return dueDate < new Date().toISOString().slice(0, 10);
-}
 
 function formatDueDate(dueDate: string): string {
   const [year, month, day] = dueDate.split("-");
@@ -25,7 +21,7 @@ function formatDueDate(dueDate: string): string {
 type KanbanCardProps = {
   card: Card;
   onDelete: (cardId: string) => void;
-  onEdit: (cardId: string, title: string, details: string, priority: string, dueDate: string | null) => void;
+  onEdit: (cardId: string, title: string, details: string, priority: Priority, dueDate: string | null) => void;
 };
 
 export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {

@@ -28,18 +28,17 @@ export default function Home() {
       setState({ status: "unauthenticated" });
       return;
     }
-    // Verify the stored token is still valid
-    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid token");
-        return res.json() as Promise<{ username: string }>;
+    Promise.all([
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => {
+          if (!res.ok) throw new Error("Invalid token");
+          return res.json() as Promise<{ username: string }>;
+        }),
+      fetchBoards(),
+    ])
+      .then(([{ username }, boards]) => {
+        setState({ status: "authenticated", username, boards, activeBoardId: boards[0]?.id ?? "" });
       })
-      .then(({ username }) =>
-        fetchBoards().then((boards) => {
-          const activeBoardId = boards[0]?.id ?? "";
-          setState({ status: "authenticated", username, boards, activeBoardId });
-        })
-      )
       .catch(() => {
         clearToken();
         setState({ status: "unauthenticated" });
@@ -207,8 +206,8 @@ const AuthScreen = ({ onLogin, onRegister }: AuthScreenProps) => {
           className="mt-6 w-full rounded-xl bg-[var(--secondary-purple)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[color:rgba(117,57,145,0.9)] disabled:opacity-60"
         >
           {isSubmitting
-            ? mode === "login" ? "Signing in" : "Creating account"
-            : mode === "login" ? "Sign in" : "Create account"}
+            ? (mode === "login" ? "Signing in" : "Creating account")
+            : (mode === "login" ? "Sign in" : "Create account")}
         </button>
 
         <div className="mt-4 flex items-center justify-between text-xs text-[var(--gray-text)]">

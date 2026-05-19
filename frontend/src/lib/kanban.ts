@@ -113,6 +113,11 @@ export const moveCard = (
   });
 };
 
+export const isOverdue = (dueDate: string | null | undefined): boolean => {
+  if (!dueDate) return false;
+  return dueDate < new Date().toISOString().slice(0, 10);
+};
+
 export const createId = (prefix: string) => {
   const randomPart = Math.random().toString(36).slice(2, 8);
   const timePart = Date.now().toString(36);

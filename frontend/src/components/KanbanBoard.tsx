@@ -8,7 +8,7 @@ import { FilterBar } from "@/components/FilterBar";
 import type { FilterState } from "@/components/FilterBar";
 import { fetchBoard, persistBoard, sendAiChat } from "@/lib/api";
 import type { BoardSummary } from "@/lib/api";
-import { createId, initialData, moveCard, type BoardData, type Priority } from "@/lib/kanban";
+import { createId, initialData, isOverdue, moveCard, type BoardData, type Priority } from "@/lib/kanban";
 import {
   closestCorners,
   DndContext,
@@ -59,15 +59,13 @@ export const KanbanBoard = ({
   );
 
   const boardData = board ?? initialData;
-  const cardsById = useMemo(() => boardData.cards, [boardData.cards]);
 
   const boardStats = useMemo(() => {
     const cards = Object.values(boardData.cards);
-    const today = new Date().toISOString().slice(0, 10);
     return {
       total: cards.length,
-      high: cards.filter((c) => (c.priority ?? "medium") === "high").length,
-      overdue: cards.filter((c) => c.due_date && c.due_date < today).length,
+      high: cards.filter((c) => c.priority === "high").length,
+      overdue: cards.filter((c) => isOverdue(c.due_date)).length,
     };
   }, [boardData.cards]);
 
@@ -148,7 +146,6 @@ export const KanbanBoard = ({
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    // Column reorder
     if (boardData.columns.some((col) => col.id === activeId)) {
       const oldIndex = boardData.columns.findIndex((col) => col.id === activeId);
       const newIndex = boardData.columns.findIndex((col) => col.id === overId);
@@ -161,7 +158,6 @@ export const KanbanBoard = ({
       return;
     }
 
-    // Card move
     updateBoard((current) => ({
       ...current,
       columns: moveCard(current.columns, activeId, overId),
@@ -199,13 +195,13 @@ export const KanbanBoard = ({
     });
   };
 
-  const handleAddCard = (columnId: string, title: string, details: string, priority = "medium") => {
+  const handleAddCard = (columnId: string, title: string, details: string, priority: Priority = "medium") => {
     const id = createId("card");
     updateBoard((current) => ({
       ...current,
       cards: {
         ...current.cards,
-        [id]: { id, title, details: details || "No details yet.", priority: priority as import("@/lib/kanban").Priority },
+        [id]: { id, title, details: details || "No details yet.", priority },
       },
       columns: current.columns.map((col) =>
         col.id === columnId ? { ...col, cardIds: [...col.cardIds, id] } : col,
@@ -217,7 +213,7 @@ export const KanbanBoard = ({
     cardId: string,
     title: string,
     details: string,
-    priority: string,
+    priority: Priority,
     due_date: string | null = null
   ) => {
     updateBoard((current) => ({
@@ -228,7 +224,7 @@ export const KanbanBoard = ({
           ...current.cards[cardId],
           title,
           details,
-          priority: priority as import("@/lib/kanban").Priority,
+          priority,
           due_date,
         },
       },
@@ -255,7 +251,7 @@ export const KanbanBoard = ({
     return response;
   };
 
-  const activeCard = activeCardId ? cardsById[activeCardId] : null;
+  const activeCard = activeCardId ? boardData.cards[activeCardId] : null;
 
   if (isLoading && !board) {
     return (

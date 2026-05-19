@@ -9,7 +9,6 @@ from app.db import (
     delete_board,
     delete_session,
     get_board,
-    get_board_state,
     get_or_create_default_board,
     get_session_user_id,
     get_user_by_username,
@@ -24,7 +23,7 @@ def test_init_creates_default_board(tmp_path: Path) -> None:
     db_path = tmp_path / "app.db"
     init_db(db_path)
 
-    board = get_board_state(db_path)
+    board = get_or_create_default_board(db_path, "user").state
     assert "columns" in board
     assert "cards" in board
 
@@ -36,7 +35,7 @@ def test_update_board_state(tmp_path: Path, realistic_board: dict[str, Any]) -> 
     default_board = get_or_create_default_board(db_path, "user")
     update_board_state(db_path, default_board.board_id, "user", realistic_board)
 
-    board = get_board_state(db_path)
+    board = get_or_create_default_board(db_path, "user").state
     assert board == realistic_board
     assert board["columns"][0]["cardIds"] == ["card-1"]
     assert board["cards"]["card-2"]["title"] == "Review API"

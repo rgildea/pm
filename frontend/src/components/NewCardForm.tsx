@@ -4,7 +4,7 @@ import type { Priority } from "@/lib/kanban";
 const initialFormState = { title: "", details: "", priority: "medium" as Priority };
 
 type NewCardFormProps = {
-  onAdd: (title: string, details: string, priority: string) => void;
+  onAdd: (title: string, details: string, priority: Priority) => void;
 };
 
 export const NewCardForm = ({ onAdd }: NewCardFormProps) => {

@@ -4,7 +4,9 @@
       "Bash(bash scripts/test-backend.sh)",
       "Bash(npm run *)",
       "Bash(bash /Users/ryan/projects/pm/scripts/test-backend.sh)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs"
     ]
   }
 }

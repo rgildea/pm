@@ -3,7 +3,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
-import type { Card, Column } from "@/lib/kanban";
+import type { Card, Column, Priority } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
 
@@ -12,9 +12,9 @@ type KanbanColumnProps = {
   cards: Card[];
   allCardIds?: string[];
   onRename: (columnId: string, title: string) => void;
-  onAddCard: (columnId: string, title: string, details: string, priority?: string) => void;
+  onAddCard: (columnId: string, title: string, details: string, priority?: Priority) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
-  onEditCard: (cardId: string, title: string, details: string, priority: string, dueDate: string | null) => void;
+  onEditCard: (cardId: string, title: string, details: string, priority: Priority, dueDate: string | null) => void;
   onDeleteColumn?: (columnId: string) => void;
 };
 

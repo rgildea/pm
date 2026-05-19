@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -88,7 +88,6 @@ def init_db(db_path: Path) -> None:
             """
         )
 
-        # Seed default user if missing
         now = _utc_now()
         default_hash = hash_password(DEFAULT_PASSWORD)
         existing = conn.execute(
@@ -110,6 +109,17 @@ def init_db(db_path: Path) -> None:
 
 
 # --- Auth helpers ---
+
+
+def get_user_by_id(db_path: Path, user_id: str) -> UserRecord | None:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, username, password_hash FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return UserRecord(user_id=row[0], username=row[1], password_hash=row[2])
 
 
 def get_user_by_username(db_path: Path, username: str) -> UserRecord | None:
@@ -138,8 +148,6 @@ def create_user(db_path: Path, username: str, password_hash: str) -> UserRecord:
 def create_session(db_path: Path, user_id: str) -> str:
     token = generate_token()
     now = _utc_now()
-    # Sessions expire in 30 days
-    from datetime import timedelta
     expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     with _connect(db_path) as conn:
         conn.execute(
@@ -277,19 +285,3 @@ def delete_board(db_path: Path, board_id: str, user_id: str) -> bool:
         )
         conn.commit()
     return cur.rowcount > 0
-
-
-# --- Legacy single-board helpers (kept for backward compat) ---
-
-
-def get_board_state(db_path: Path, user_id: str = DEFAULT_USER_ID) -> dict[str, Any]:
-    board = get_or_create_default_board(db_path, user_id)
-    return board.state
-
-
-def update_board_state_legacy(
-    db_path: Path, board_state: dict[str, Any], user_id: str = DEFAULT_USER_ID
-) -> dict[str, Any]:
-    board = get_or_create_default_board(db_path, user_id)
-    update_board_state(db_path, board.board_id, user_id, board_state)
-    return board_state

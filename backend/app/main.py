@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,6 +24,7 @@ from app.db import (
     get_board,
     get_or_create_default_board,
     get_session_user_id,
+    get_user_by_id,
     get_user_by_username,
     init_db,
     list_boards,
@@ -36,7 +38,6 @@ from app.schemas import (
     BoardSummary,
     BoardUpdateRequest,
     LoginRequest,
-    LoginResponse,
     RegisterRequest,
 )
 
@@ -60,7 +61,6 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     db_path = db_path or _default_db_path()
     app = FastAPI()
 
-    # Per-user AI history: dict[user_id, list[message]]
     app.state.ai_history: dict[str, list[dict[str, str]]] = {}
 
     init_db(db_path)
@@ -76,6 +76,34 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         return user_id
 
+    # --- AI helper ---
+
+    def _run_ai_chat(board_id: str, user_id: str, payload: AIChatRequest) -> JSONResponse:
+        history = app.state.ai_history.setdefault(user_id, [])
+        board_payload = payload.board.model_dump()
+        messages = build_ai_messages(board_payload, history, payload.message)
+
+        try:
+            raw_content = call_openrouter_messages(messages)
+            ai_response = parse_ai_response(raw_content)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="AI request failed") from exc
+        except (ValueError, TypeError, KeyError) as exc:
+            raise HTTPException(status_code=502, detail="AI response invalid") from exc
+
+        history.append({"role": "user", "content": payload.message})
+        history.append({"role": "assistant", "content": ai_response.response})
+        del history[:-MAX_AI_HISTORY_MESSAGES]
+
+        response_board = None
+        if ai_response.board is not None:
+            response_board = ai_response.board.model_dump()
+            update_board_state(db_path, board_id, user_id, response_board)
+
+        return JSONResponse({"response": ai_response.response, "board": response_board})
+
     # --- Health ---
 
     @app.get("/api/health")
@@ -86,13 +114,12 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/auth/register")
     def register(payload: RegisterRequest) -> JSONResponse:
-        import re as _re
         username = payload.username.strip()
         if not username or len(username) < 2:
             raise HTTPException(status_code=422, detail="Username must be at least 2 characters")
         if len(username) > 32:
             raise HTTPException(status_code=422, detail="Username must be at most 32 characters")
-        if not _re.match(r"^[a-zA-Z0-9_-]+$", username):
+        if not re.match(r"^[a-zA-Z0-9_-]+$", username):
             raise HTTPException(status_code=422, detail="Username may only contain letters, numbers, _ and -")
         if len(payload.password) < 6:
             raise HTTPException(status_code=422, detail="Password must be at least 6 characters")
@@ -122,13 +149,10 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/auth/me")
     def me(user_id: str = Depends(get_current_user)) -> JSONResponse:
-        from app.db import get_user_by_username as _get_by_username
-        # Look up username by user_id
-        with __import__("sqlite3").connect(db_path) as conn:
-            row = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
-        if row is None:
+        user = get_user_by_id(db_path, user_id)
+        if user is None:
             raise HTTPException(status_code=401, detail="User not found")
-        return JSONResponse({"user_id": user_id, "username": row[0]})
+        return JSONResponse({"user_id": user_id, "username": user.username})
 
     # --- Board endpoints ---
 
@@ -136,7 +160,6 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     def get_boards(user_id: str = Depends(get_current_user)) -> JSONResponse:
         boards = list_boards(db_path, user_id)
         if not boards:
-            # Auto-create a default board on first access
             board = get_or_create_default_board(db_path, user_id)
             boards = [board]
         return JSONResponse({
@@ -210,10 +233,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         board_id: str,
         user_id: str = Depends(get_current_user),
     ) -> JSONResponse:
-        # Verify ownership before checking board count
-        if get_board(db_path, board_id, user_id) is None:
-            raise HTTPException(status_code=404, detail="Board not found")
         boards = list_boards(db_path, user_id)
+        if not any(b.board_id == board_id for b in boards):
+            raise HTTPException(status_code=404, detail="Board not found")
         if len(boards) <= 1:
             raise HTTPException(status_code=409, detail="Cannot delete your only board")
         delete_board(db_path, board_id, user_id)
@@ -237,34 +259,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         payload: AIChatRequest,
         user_id: str = Depends(get_current_user),
     ) -> JSONResponse:
-        board = get_board(db_path, board_id, user_id)
-        if board is None:
+        if get_board(db_path, board_id, user_id) is None:
             raise HTTPException(status_code=404, detail="Board not found")
-
-        history = app.state.ai_history.setdefault(user_id, [])
-        board_payload = payload.board.model_dump()
-        messages = build_ai_messages(board_payload, history, payload.message)
-
-        try:
-            raw_content = call_openrouter_messages(messages)
-            ai_response = parse_ai_response(raw_content)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail="AI request failed") from exc
-        except (ValueError, TypeError, KeyError) as exc:
-            raise HTTPException(status_code=502, detail="AI response invalid") from exc
-
-        history.append({"role": "user", "content": payload.message})
-        history.append({"role": "assistant", "content": ai_response.response})
-        del history[:-MAX_AI_HISTORY_MESSAGES]
-
-        response_board = None
-        if ai_response.board is not None:
-            response_board = ai_response.board.model_dump()
-            update_board_state(db_path, board_id, user_id, response_board)
-
-        return JSONResponse({"response": ai_response.response, "board": response_board})
+        return _run_ai_chat(board_id, user_id, payload)
 
     # --- Legacy board endpoints (auth required) ---
 
@@ -288,30 +285,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         user_id: str = Depends(get_current_user),
     ) -> JSONResponse:
         board = get_or_create_default_board(db_path, user_id)
-        history = app.state.ai_history.setdefault(user_id, [])
-        board_payload = payload.board.model_dump()
-        messages = build_ai_messages(board_payload, history, payload.message)
-
-        try:
-            raw_content = call_openrouter_messages(messages)
-            ai_response = parse_ai_response(raw_content)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail="AI request failed") from exc
-        except (ValueError, TypeError, KeyError) as exc:
-            raise HTTPException(status_code=502, detail="AI response invalid") from exc
-
-        history.append({"role": "user", "content": payload.message})
-        history.append({"role": "assistant", "content": ai_response.response})
-        del history[:-MAX_AI_HISTORY_MESSAGES]
-
-        response_board = None
-        if ai_response.board is not None:
-            response_board = ai_response.board.model_dump()
-            update_board_state(db_path, board.board_id, user_id, response_board)
-
-        return JSONResponse({"response": ai_response.response, "board": response_board})
+        return _run_ai_chat(board.board_id, user_id, payload)
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
